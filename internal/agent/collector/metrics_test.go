@@ -9,11 +9,11 @@ func TestNewMetricsCollector(t *testing.T) {
 	if collector == nil {
 		t.Error("expected collector to be created")
 	}
-	if collector.metrics == nil {
-		t.Error("expected metrics to be initialized")
+	if collector.metrics.Gauges == nil {
+		t.Error("expected gauges map to be initialized")
 	}
-	if collector.pollCount != 0 {
-		t.Errorf("expected pollCount 0, got %d", collector.pollCount)
+	if collector.metrics.Counters["PollCount"] != 0 {
+		t.Errorf("expected PollCount 0, got %d", collector.metrics.Counters["PollCount"])
 	}
 }
 
@@ -27,21 +27,21 @@ func TestMetricsCollector_Collect(t *testing.T) {
 	metrics := collector.GetMetrics()
 
 	// Проверяем, что PollCount увеличился
-	if metrics.PollCount != 1 {
-		t.Errorf("expected PollCount 1, got %d", metrics.PollCount)
+	if metrics.Counters["PollCount"] != 1 {
+		t.Errorf("expected PollCount 1, got %d", metrics.Counters["PollCount"])
 	}
 
 	// Проверяем, что RandomValue в допустимом диапазоне
-	if metrics.RandomValue < 0 || metrics.RandomValue > 100 {
-		t.Errorf("RandomValue out of range: %f", metrics.RandomValue)
+	if metrics.Gauges["RandomValue"] < 0 || metrics.Gauges["RandomValue"] > 100 {
+		t.Errorf("RandomValue out of range: %f", metrics.Gauges["RandomValue"])
 	}
 
 	// Проверяем несколько метрик из runtime
-	if metrics.Alloc < 0 {
-		t.Errorf("Alloc should be >= 0, got %f", metrics.Alloc)
+	if metrics.Gauges["Alloc"] < 0 {
+		t.Errorf("Alloc should be >= 0, got %f", metrics.Gauges["Alloc"])
 	}
-	if metrics.Sys < 0 {
-		t.Errorf("Sys should be >= 0, got %f", metrics.Sys)
+	if metrics.Gauges["Sys"] < 0 {
+		t.Errorf("Sys should be >= 0, got %f", metrics.Gauges["Sys"])
 	}
 }
 
@@ -49,11 +49,11 @@ func TestMetricsCollector_MultipleCollect(t *testing.T) {
 	collector := NewMetricsCollector()
 
 	// Собираем метрики несколько раз
-	for i := 1; i <= 5; i++ {
+	for i := int64(1); i <= 5; i++ {
 		collector.Collect()
-		pollCount := collector.GetPollCount()
-		if pollCount != int64(i) {
-			t.Errorf("expected PollCount %d, got %d", i, pollCount)
+		metrics := collector.GetMetrics()
+		if metrics.Counters["PollCount"] != i {
+			t.Errorf("expected PollCount %d, got %d", i, metrics.Counters["PollCount"])
 		}
 	}
 }
@@ -76,9 +76,9 @@ func TestMetricsCollector_Concurrency(t *testing.T) {
 	}
 
 	// Проверяем, что счетчик увеличился корректно
-	pollCount := collector.GetPollCount()
-	if pollCount != 10 {
-		t.Errorf("expected PollCount 10, got %d", pollCount)
+	metrics := collector.GetMetrics()
+	if metrics.Counters["PollCount"] != 10 {
+		t.Errorf("expected PollCount 10, got %d", metrics.Counters["PollCount"])
 	}
 }
 
@@ -91,10 +91,10 @@ func TestMetricsCollector_GetMetrics_Copy(t *testing.T) {
 	metrics2 := collector.GetMetrics()
 
 	// Изменяем первую копию
-	metrics1.Alloc = 999.9
+	metrics1.Gauges["Alloc"] = 999.9
 
 	// Проверяем, что вторая копия не изменилась
-	if metrics2.Alloc == 999.9 {
+	if metrics2.Gauges["Alloc"] == 999.9 {
 		t.Error("expected metrics to be copied, not referenced")
 	}
 }

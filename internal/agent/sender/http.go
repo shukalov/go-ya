@@ -64,48 +64,17 @@ func (s *HTTPSender) SendMetric(metricType models.MetricType, name string, value
 }
 
 // SendAllMetrics - отправляет все метрики
-func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics, pollCount int64) error {
-	// Отправляем gauge метрики
-	gauges := map[string]float64{
-		"Alloc":         metrics.Alloc,
-		"BuckHashSys":   metrics.BuckHashSys,
-		"Frees":         metrics.Frees,
-		"GCCPUFraction": metrics.GCCPUFraction,
-		"GCSys":         metrics.GCSys,
-		"HeapAlloc":     metrics.HeapAlloc,
-		"HeapIdle":      metrics.HeapIdle,
-		"HeapInuse":     metrics.HeapInuse,
-		"HeapObjects":   metrics.HeapObjects,
-		"HeapReleased":  metrics.HeapReleased,
-		"HeapSys":       metrics.HeapSys,
-		"LastGC":        metrics.LastGC,
-		"Lookups":       metrics.Lookups,
-		"MCacheInuse":   metrics.MCacheInuse,
-		"MCacheSys":     metrics.MCacheSys,
-		"MSpanInuse":    metrics.MSpanInuse,
-		"MSpanSys":      metrics.MSpanSys,
-		"Mallocs":       metrics.Mallocs,
-		"NextGC":        metrics.NextGC,
-		"NumForcedGC":   metrics.NumForcedGC,
-		"NumGC":         metrics.NumGC,
-		"OtherSys":      metrics.OtherSys,
-		"PauseTotalNs":  metrics.PauseTotalNs,
-		"StackInuse":    metrics.StackInuse,
-		"StackSys":      metrics.StackSys,
-		"Sys":           metrics.Sys,
-		"TotalAlloc":    metrics.TotalAlloc,
-		"RandomValue":   metrics.RandomValue,
-	}
-
-	for name, value := range gauges {
-		if err := s.SendMetric(models.TypeGauge, name, value); err != nil {
-			return fmt.Errorf("failed to send gauge %s: %w", name, err)
+func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics) error {
+	for _, def := range models.GaugeDefs() {
+		if err := s.SendMetric(models.TypeGauge, def.Name, metrics.Gauges[def.Name]); err != nil {
+			return fmt.Errorf("failed to send gauge %s: %w", def.Name, err)
 		}
 	}
 
-	// Отправляем counter метрики
-	if err := s.SendMetric(models.TypeCounter, "PollCount", pollCount); err != nil {
-		return fmt.Errorf("failed to send PollCount: %w", err)
+	for _, def := range models.CounterDefs() {
+		if err := s.SendMetric(models.TypeCounter, def.Name, metrics.Counters[def.Name]); err != nil {
+			return fmt.Errorf("failed to send counter %s: %w", def.Name, err)
+		}
 	}
 
 	return nil

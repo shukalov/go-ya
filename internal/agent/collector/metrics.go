@@ -10,16 +10,17 @@ import (
 
 // MetricsCollector - сборщик метрик из runtime
 type MetricsCollector struct {
-	mu        sync.RWMutex
-	metrics   *models.RuntimeMetrics
-	pollCount int64
+	mu      sync.RWMutex
+	metrics models.RuntimeMetrics
 }
 
 // NewMetricsCollector - создает новый сборщик
 func NewMetricsCollector() *MetricsCollector {
 	return &MetricsCollector{
-		metrics:   &models.RuntimeMetrics{},
-		pollCount: 0,
+		metrics: models.RuntimeMetrics{
+			Gauges:   make(map[string]float64, len(models.GaugeDefs())),
+			Counters: make(map[string]int64, len(models.CounterDefs())),
+		},
 	}
 }
 
@@ -31,53 +32,52 @@ func (c *MetricsCollector) Collect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Заполняем gauge метрики
-	c.metrics.Alloc = float64(memStats.Alloc)
-	c.metrics.BuckHashSys = float64(memStats.BuckHashSys)
-	c.metrics.Frees = float64(memStats.Frees)
-	c.metrics.GCCPUFraction = memStats.GCCPUFraction
-	c.metrics.GCSys = float64(memStats.GCSys)
-	c.metrics.HeapAlloc = float64(memStats.HeapAlloc)
-	c.metrics.HeapIdle = float64(memStats.HeapIdle)
-	c.metrics.HeapInuse = float64(memStats.HeapInuse)
-	c.metrics.HeapObjects = float64(memStats.HeapObjects)
-	c.metrics.HeapReleased = float64(memStats.HeapReleased)
-	c.metrics.HeapSys = float64(memStats.HeapSys)
-	c.metrics.LastGC = float64(memStats.LastGC)
-	c.metrics.Lookups = float64(memStats.Lookups)
-	c.metrics.MCacheInuse = float64(memStats.MCacheInuse)
-	c.metrics.MCacheSys = float64(memStats.MCacheSys)
-	c.metrics.MSpanInuse = float64(memStats.MSpanInuse)
-	c.metrics.MSpanSys = float64(memStats.MSpanSys)
-	c.metrics.Mallocs = float64(memStats.Mallocs)
-	c.metrics.NextGC = float64(memStats.NextGC)
-	c.metrics.NumForcedGC = float64(memStats.NumForcedGC)
-	c.metrics.NumGC = float64(memStats.NumGC)
-	c.metrics.OtherSys = float64(memStats.OtherSys)
-	c.metrics.PauseTotalNs = float64(memStats.PauseTotalNs)
-	c.metrics.StackInuse = float64(memStats.StackInuse)
-	c.metrics.StackSys = float64(memStats.StackSys)
-	c.metrics.Sys = float64(memStats.Sys)
-	c.metrics.TotalAlloc = float64(memStats.TotalAlloc)
+	g := c.metrics.Gauges
 
-	// Добавляем RandomValue
-	c.metrics.RandomValue = rand.Float64() * 100
+	g["Alloc"] = float64(memStats.Alloc)
+	g["BuckHashSys"] = float64(memStats.BuckHashSys)
+	g["Frees"] = float64(memStats.Frees)
+	g["GCCPUFraction"] = memStats.GCCPUFraction
+	g["GCSys"] = float64(memStats.GCSys)
+	g["HeapAlloc"] = float64(memStats.HeapAlloc)
+	g["HeapIdle"] = float64(memStats.HeapIdle)
+	g["HeapInuse"] = float64(memStats.HeapInuse)
+	g["HeapObjects"] = float64(memStats.HeapObjects)
+	g["HeapReleased"] = float64(memStats.HeapReleased)
+	g["HeapSys"] = float64(memStats.HeapSys)
+	g["LastGC"] = float64(memStats.LastGC)
+	g["Lookups"] = float64(memStats.Lookups)
+	g["MCacheInuse"] = float64(memStats.MCacheInuse)
+	g["MCacheSys"] = float64(memStats.MCacheSys)
+	g["MSpanInuse"] = float64(memStats.MSpanInuse)
+	g["MSpanSys"] = float64(memStats.MSpanSys)
+	g["Mallocs"] = float64(memStats.Mallocs)
+	g["NextGC"] = float64(memStats.NextGC)
+	g["NumForcedGC"] = float64(memStats.NumForcedGC)
+	g["NumGC"] = float64(memStats.NumGC)
+	g["OtherSys"] = float64(memStats.OtherSys)
+	g["PauseTotalNs"] = float64(memStats.PauseTotalNs)
+	g["StackInuse"] = float64(memStats.StackInuse)
+	g["StackSys"] = float64(memStats.StackSys)
+	g["Sys"] = float64(memStats.Sys)
+	g["TotalAlloc"] = float64(memStats.TotalAlloc)
 
-	// Увеличиваем счетчик
-	c.pollCount++
-	c.metrics.PollCount = c.pollCount
+	g["RandomValue"] = rand.Float64() * 100
+
+	c.metrics.Counters["PollCount"]++
 }
 
 // GetMetrics - возвращает копию собранных метрик
 func (c *MetricsCollector) GetMetrics() models.RuntimeMetrics {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return *c.metrics
-}
-
-// GetPollCount - возвращает текущее значение счетчика
-func (c *MetricsCollector) GetPollCount() int64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.pollCount
+	gauges := make(map[string]float64, len(c.metrics.Gauges))
+	for k, v := range c.metrics.Gauges {
+		gauges[k] = v
+	}
+	counters := make(map[string]int64, len(c.metrics.Counters))
+	for k, v := range c.metrics.Counters {
+		counters[k] = v
+	}
+	return models.RuntimeMetrics{Gauges: gauges, Counters: counters}
 }

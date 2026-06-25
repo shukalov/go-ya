@@ -9,6 +9,28 @@ import (
 	"github.com/shukalov/go-ya/internal/server/storage"
 )
 
+type parsedPath struct {
+	endpoint   string
+	metricType string
+	metricName string
+}
+
+func parsePath(path string) (parsedPath, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 3 {
+		return parsedPath{}, fmt.Errorf("invalid path")
+	}
+	pp := parsedPath{
+		endpoint:   parts[0],
+		metricType: parts[1],
+		metricName: parts[2],
+	}
+	if !isValidMetricName(pp.metricName) {
+		return parsedPath{}, fmt.Errorf("invalid metric name: '%s'", pp.metricName)
+	}
+	return pp, nil
+}
+
 // MetricsHandler - обработчик для метрик
 type MetricsHandler struct {
 	storage storage.Storage
@@ -50,50 +72,27 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Разбираем путь
-	path := strings.Trim(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) < 1 || parts[0] != "update" {
+	pp, err := parsePath(r.URL.Path)
+	if err != nil || pp.endpoint != "update" {
 		http.Error(w, "Invalid endpoint", http.StatusNotFound)
 		return
 	}
 
-	if len(parts) < 4 {
-		if len(parts) >= 3 {
-			http.Error(w, "Value is required", http.StatusBadRequest)
-		} else {
-			http.Error(w, "Metric name is required", http.StatusNotFound)
-		}
-		return
-	}
-
-	metricType := parts[1]
-	metricName := parts[2]
-	valueStr := parts[3]
-
-	if metricName == "" {
-		http.Error(w, "Metric name is required", http.StatusNotFound)
-		return
-	}
-
-	if !isValidMetricName(metricName) {
-		http.Error(w, fmt.Sprintf("Invalid metric name: '%s'", metricName), http.StatusBadRequest)
-		return
-	}
-
-	if valueStr == "" {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 || parts[3] == "" {
 		http.Error(w, "Value is required", http.StatusBadRequest)
 		return
 	}
+	valueStr := parts[3]
 
-	switch metricType {
+	switch pp.metricType {
 	case "gauge":
 		value, err := strconv.ParseFloat(valueStr, 64)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid gauge value: '%s'", valueStr), http.StatusBadRequest)
 			return
 		}
-		if err := h.storage.UpdateGauge(metricName, value); err != nil {
+		if err := h.storage.UpdateGauge(pp.metricName, value); err != nil {
 			http.Error(w, fmt.Sprintf("Storage error: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -104,7 +103,7 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Invalid counter value: '%s'", valueStr), http.StatusBadRequest)
 			return
 		}
-		if err := h.storage.UpdateCounter(metricName, value); err != nil {
+		if err := h.storage.UpdateCounter(pp.metricName, value); err != nil {
 			http.Error(w, fmt.Sprintf("Storage error: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -120,25 +119,15 @@ func (h *MetricsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Get - обработчик для получения значений метрик
 func (h *MetricsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	path := strings.Trim(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) != 3 || parts[0] != "value" {
+	pp, err := parsePath(r.URL.Path)
+	if err != nil || pp.endpoint != "value" {
 		http.Error(w, "Invalid path. Expected: /value/{type}/{name}", http.StatusNotFound)
 		return
 	}
 
-	metricType := parts[1]
-	metricName := parts[2]
-
-	if metricName == "" {
-		http.Error(w, "Metric name is required", http.StatusNotFound)
-		return
-	}
-
-	switch metricType {
+	switch pp.metricType {
 	case "gauge":
-		value, ok, err := h.storage.GetGauge(metricName)
+		value, ok, err := h.storage.GetGauge(pp.metricName)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Storage error: %v", err), http.StatusInternalServerError)
 			return
@@ -150,7 +139,7 @@ func (h *MetricsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%f", value)
 
 	case "counter":
-		value, ok, err := h.storage.GetCounter(metricName)
+		value, ok, err := h.storage.GetCounter(pp.metricName)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Storage error: %v", err), http.StatusInternalServerError)
 			return

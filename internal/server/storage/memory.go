@@ -2,6 +2,8 @@ package storage
 
 import (
 	"sync"
+
+	"github.com/shukalov/go-ya/pkg/models"
 )
 
 // MemStorage - in-memory хранилище метрик
@@ -52,11 +54,10 @@ func (s *MemStorage) GetCounter(name string) (int64, bool, error) {
 }
 
 // GetAllMetrics - возвращает все метрики
-func (s *MemStorage) GetAllMetrics() (map[string]float64, map[string]int64, error) {
+func (s *MemStorage) GetAllMetrics() (models.RuntimeMetrics, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Создаем копии для защиты от изменений
 	gauges := make(map[string]float64)
 	for k, v := range s.gauges {
 		gauges[k] = v
@@ -67,5 +68,5 @@ func (s *MemStorage) GetAllMetrics() (map[string]float64, map[string]int64, erro
 		counters[k] = v
 	}
 
-	return gauges, counters, nil
+	return models.RuntimeMetrics{Gauges: gauges, Counters: counters}, nil
 }

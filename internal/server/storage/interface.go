@@ -1,5 +1,7 @@
 package storage
 
+import "github.com/shukalov/go-ya/pkg/models"
+
 // Storage - интерфейс для работы с хранилищем метрик
 type Storage interface {
 	// UpdateGauge обновляет или добавляет gauge метрику
@@ -14,6 +16,6 @@ type Storage interface {
 	// GetCounter возвращает значение counter метрики
 	GetCounter(name string) (int64, bool, error)
 
-	// GetAllMetrics возвращает все метрики (для отладки)
-	GetAllMetrics() (map[string]float64, map[string]int64, error)
+	// GetAllMetrics возвращает все метрики
+	GetAllMetrics() (models.RuntimeMetrics, error)
 }

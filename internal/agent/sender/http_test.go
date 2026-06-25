@@ -81,13 +81,11 @@ func TestHTTPSender_SendAllMetrics(t *testing.T) {
 	sender := NewHTTPSender(server.URL)
 
 	metrics := models.RuntimeMetrics{
-		Alloc:       1024.5,
-		HeapAlloc:   512.3,
-		PollCount:   5,
-		RandomValue: 42.0,
+		Gauges:   map[string]float64{"Alloc": 1024.5, "HeapAlloc": 512.3, "RandomValue": 42.0},
+		Counters: map[string]int64{"PollCount": 5},
 	}
 
-	err := sender.SendAllMetrics(metrics, 5)
+	err := sender.SendAllMetrics(metrics)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -103,10 +101,11 @@ func TestHTTPSender_SendAllMetrics_Error(t *testing.T) {
 	sender := NewHTTPSender(server.URL)
 
 	metrics := models.RuntimeMetrics{
-		Alloc: 1024.5,
+		Gauges: map[string]float64{"Alloc": 1024.5},
 	}
+	metrics.Gauges["Alloc"] = 1024.5
 
-	err := sender.SendAllMetrics(metrics, 1)
+	err := sender.SendAllMetrics(metrics)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}

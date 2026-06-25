@@ -37,27 +37,23 @@ func (a *Agent) Run() error {
 		a.config.PollInterval, a.config.ReportInterval)
 	fmt.Printf("Server address: %s\n", a.config.ServerAddress)
 
-	// Первый сбор метрик
 	a.collector.Collect()
-	fmt.Println("Initial metrics collected")
 
 	reportCounter := 0
 	reportsPerCycle := int(a.config.ReportInterval / a.config.PollInterval)
 
 	for {
-		// Собираем метрики
 		a.collector.Collect()
-		pollCount := a.collector.GetPollCount()
-		fmt.Printf("Metrics collected (PollCount: %d)\n", pollCount)
 
-		// Проверяем, нужно ли отправлять
 		reportCounter++
 		if reportCounter >= reportsPerCycle {
 			metrics := a.collector.GetMetrics()
-			if err := a.sender.SendAllMetrics(metrics, pollCount); err != nil {
+			fmt.Printf("Metrics collected (PollCount: %d)\n", metrics.Counters["PollCount"])
+
+			if err := a.sender.SendAllMetrics(metrics); err != nil {
 				fmt.Printf("Error sending metrics: %v\n", err)
 			} else {
-				fmt.Printf("Metrics sent successfully (PollCount: %d)\n", pollCount)
+				fmt.Printf("Metrics sent successfully (PollCount: %d)\n", metrics.Counters["PollCount"])
 			}
 			reportCounter = 0
 		}

@@ -152,23 +152,23 @@ func TestMemStorage_GetAllMetrics(t *testing.T) {
 	storage.UpdateCounter("counter1", 10)
 	storage.UpdateCounter("counter2", 20)
 
-	gauges, counters, err := storage.GetAllMetrics()
+	result, err := storage.GetAllMetrics()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if len(gauges) != 2 {
-		t.Errorf("expected 2 gauges, got %d", len(gauges))
+	if len(result.Gauges) != 2 {
+		t.Errorf("expected 2 gauges, got %d", len(result.Gauges))
 	}
-	if len(counters) != 2 {
-		t.Errorf("expected 2 counters, got %d", len(counters))
+	if len(result.Counters) != 2 {
+		t.Errorf("expected 2 counters, got %d", len(result.Counters))
 	}
 
-	if gauges["gauge1"] != 1.1 {
-		t.Errorf("expected 1.1, got %f", gauges["gauge1"])
+	if result.Gauges["gauge1"] != 1.1 {
+		t.Errorf("expected 1.1, got %f", result.Gauges["gauge1"])
 	}
-	if counters["counter1"] != 10 {
-		t.Errorf("expected 10, got %d", counters["counter1"])
+	if result.Counters["counter1"] != 10 {
+		t.Errorf("expected 10, got %d", result.Counters["counter1"])
 	}
 }
 

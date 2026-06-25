@@ -41,9 +41,9 @@ func TestAgent_CollectMetrics(t *testing.T) {
 	// Собираем метрики вручную
 	agent.collector.Collect()
 
-	pollCount := agent.collector.GetPollCount()
-	if pollCount != 1 {
-		t.Errorf("expected PollCount 1, got %d", pollCount)
+	metrics := agent.collector.GetMetrics()
+	if metrics.Counters["PollCount"] != 1 {
+		t.Errorf("expected PollCount 1, got %d", metrics.Counters["PollCount"])
 	}
 }
 
@@ -67,9 +67,8 @@ func TestAgent_SendMetrics(t *testing.T) {
 
 	// Отправляем метрики
 	metrics := agent.collector.GetMetrics()
-	pollCount := agent.collector.GetPollCount()
 
-	err := agent.sender.SendAllMetrics(metrics, pollCount)
+	err := agent.sender.SendAllMetrics(metrics)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -101,8 +100,8 @@ func TestAgent_Run(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Проверяем, что метрики собираются
-	pollCount := agent.collector.GetPollCount()
-	if pollCount < 3 {
-		t.Errorf("expected PollCount >= 3, got %d", pollCount)
+	metrics := agent.collector.GetMetrics()
+	if metrics.Counters["PollCount"] < 3 {
+		t.Errorf("expected PollCount >= 3, got %d", metrics.Counters["PollCount"])
 	}
 }
