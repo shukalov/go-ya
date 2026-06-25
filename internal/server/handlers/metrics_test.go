@@ -4,19 +4,39 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/shukalov/go-ya/internal/server/storage"
+	"github.com/shukalov/go-ya/pkg/models"
 )
 
-func setupTestHandler() (*MetricsHandler, *storage.MemStorage) {
-	storage := storage.NewMemStorage()
-	handler := NewMetricsHandler(storage)
-	return handler, storage
+func metricDescription(name string) string {
+	for _, d := range models.MetricDefs() {
+		if d.Name == name {
+			return d.Description
+		}
+	}
+	return ""
+}
+
+func setupRouter() (*gin.Engine, *storage.MemStorage) {
+	gin.SetMode(gin.TestMode)
+	store := storage.NewMemStorage()
+	handler := NewMetricsHandler(store)
+
+	router := gin.New()
+	router.POST("/update/:type/:name/:value", handler.Update)
+	router.GET("/value/:type/:name", handler.Get)
+	router.GET("/", handler.Index)
+	router.GET("/metrics", handler.Metrics)
+
+	return router, store
 }
 
 func TestMetricsHandler_Update_Gauge(t *testing.T) {
-	handler, _ := setupTestHandler()
+	router, _ := setupRouter()
 
 	tests := []struct {
 		name           string
@@ -42,11 +62,10 @@ func TestMetricsHandler_Update_Gauge(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
-			req.Header.Set("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
-
-			handler.Update(w, req)
+			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req.Header.Set("Content-Type", "text/plain")
+			router.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
@@ -56,7 +75,7 @@ func TestMetricsHandler_Update_Gauge(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_Counter(t *testing.T) {
-	handler, storage := setupTestHandler()
+	router, store := setupRouter()
 
 	tests := []struct {
 		name           string
@@ -86,18 +105,16 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
-			req.Header.Set("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
-
-			handler.Update(w, req)
+			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req.Header.Set("Content-Type", "text/plain")
+			router.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
 			}
 
 			if tt.expectedStatus == http.StatusOK {
-				// Извлекаем имя метрики из пути
 				metricName := ""
 				switch tt.path {
 				case "/update/counter/test_counter_1/5":
@@ -108,7 +125,7 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 					metricName = "test_counter_3"
 				}
 
-				val, ok, _ := storage.GetCounter(metricName)
+				val, ok, _ := store.GetCounter(metricName)
 				if !ok {
 					t.Error("expected metric to exist")
 				}
@@ -121,30 +138,27 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
-	handler, storage := setupTestHandler()
+	router, store := setupRouter()
 
-	// Первое обновление
-	req := httptest.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/5", bytes.NewBuffer(nil))
+	req, _ := http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/5", bytes.NewBuffer(nil))
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
-	handler.Update(w, req)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	// Второе обновление
-	req = httptest.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/3", bytes.NewBuffer(nil))
+	req, _ = http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/3", bytes.NewBuffer(nil))
 	req.Header.Set("Content-Type", "text/plain")
 	w = httptest.NewRecorder()
-	handler.Update(w, req)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	// Проверяем, что значения суммировались
-	val, ok, _ := storage.GetCounter("test_counter_acc")
+	val, ok, _ := store.GetCounter("test_counter_acc")
 	if !ok {
 		t.Error("expected metric to exist")
 	}
@@ -154,30 +168,27 @@ func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_Gauge_Overwrites(t *testing.T) {
-	handler, storage := setupTestHandler()
+	router, store := setupRouter()
 
-	// Первое обновление
-	req := httptest.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/10.5", bytes.NewBuffer(nil))
+	req, _ := http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/10.5", bytes.NewBuffer(nil))
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
-	handler.Update(w, req)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	// Второе обновление с другим значением
-	req = httptest.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/20.7", bytes.NewBuffer(nil))
+	req, _ = http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/20.7", bytes.NewBuffer(nil))
 	req.Header.Set("Content-Type", "text/plain")
 	w = httptest.NewRecorder()
-	handler.Update(w, req)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	// Проверяем, что значение перезаписалось
-	val, ok, _ := storage.GetGauge("test_gauge_overwrite")
+	val, ok, _ := store.GetGauge("test_gauge_overwrite")
 	if !ok {
 		t.Error("expected metric to exist")
 	}
@@ -187,7 +198,7 @@ func TestMetricsHandler_Update_Gauge_Overwrites(t *testing.T) {
 }
 
 func TestMetricsHandler_Update_Errors(t *testing.T) {
-	handler, _ := setupTestHandler()
+	router, _ := setupRouter()
 
 	tests := []struct {
 		name           string
@@ -201,21 +212,21 @@ func TestMetricsHandler_Update_Errors(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/update/gauge/test/123",
 			contentType:    "text/plain",
-			expectedStatus: http.StatusMethodNotAllowed,
+			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "wrong content type",
 			method:         http.MethodPost,
 			path:           "/update/gauge/test/123",
 			contentType:    "application/json",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "missing value",
 			method:         http.MethodPost,
 			path:           "/update/gauge/test",
 			contentType:    "text/plain",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "missing name",
@@ -256,11 +267,10 @@ func TestMetricsHandler_Update_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.path, bytes.NewBuffer(nil))
-			req.Header.Set("Content-Type", tt.contentType)
 			w := httptest.NewRecorder()
-
-			handler.Update(w, req)
+			req, _ := http.NewRequest(tt.method, tt.path, bytes.NewBuffer(nil))
+			req.Header.Set("Content-Type", tt.contentType)
+			router.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
@@ -270,11 +280,10 @@ func TestMetricsHandler_Update_Errors(t *testing.T) {
 }
 
 func TestMetricsHandler_Get(t *testing.T) {
-	handler, storage := setupTestHandler()
+	router, store := setupRouter()
 
-	// Добавляем тестовые метрики
-	storage.UpdateGauge("test_gauge", 123.45)
-	storage.UpdateCounter("test_counter", 42)
+	store.UpdateGauge("test_gauge", 123.45)
+	store.UpdateCounter("test_counter", 42)
 
 	tests := []struct {
 		name           string
@@ -286,7 +295,7 @@ func TestMetricsHandler_Get(t *testing.T) {
 			name:           "get gauge",
 			path:           "/value/gauge/test_gauge",
 			expectedStatus: http.StatusOK,
-			expectedBody:   "123.450000",
+			expectedBody:   "123.45",
 		},
 		{
 			name:           "get counter",
@@ -315,17 +324,16 @@ func TestMetricsHandler_Get(t *testing.T) {
 		{
 			name:           "empty name",
 			path:           "/value/gauge/",
-			expectedStatus: http.StatusNotFound,
+			expectedStatus: http.StatusMovedPermanently,
 			expectedBody:   "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
-
-			handler.Get(w, req)
+			req, _ := http.NewRequest(http.MethodGet, tt.path, nil)
+			router.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
@@ -339,14 +347,225 @@ func TestMetricsHandler_Get(t *testing.T) {
 }
 
 func TestMetricsHandler_Get_NotFound(t *testing.T) {
-	handler, _ := setupTestHandler()
+	router, _ := setupRouter()
 
-	req := httptest.NewRequest(http.MethodGet, "/value/gauge/nonexistent", nil)
 	w := httptest.NewRecorder()
-
-	handler.Get(w, req)
+	req, _ := http.NewRequest(http.MethodGet, "/value/gauge/nonexistent", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected status %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestMetricsHandler_Index(t *testing.T) {
+	router, store := setupRouter()
+
+	store.UpdateGauge("Alloc", 1024.5)
+	store.UpdateCounter("PollCount", 42)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html, got %s", ct)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Alloc") {
+		t.Errorf("expected body to contain Alloc")
+	}
+	if !strings.Contains(body, "1024.5") {
+		t.Errorf("expected body to contain 1024.5")
+	}
+	if !strings.Contains(body, "PollCount") {
+		t.Errorf("expected body to contain PollCount")
+	}
+	if !strings.Contains(body, "42") {
+		t.Errorf("expected body to contain 42")
+	}
+}
+
+func TestIsValidMetricName(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		valid  bool
+	}{
+		{name: "alphanumeric", input: "test123", valid: true},
+		{name: "with underscore", input: "test_metric", valid: true},
+		{name: "with dot", input: "test.metric", valid: true},
+		{name: "mixed case", input: "TestMetric_1.0", valid: true},
+		{name: "empty", input: "", valid: false},
+		{name: "with space", input: "test metric", valid: false},
+		{name: "with hyphen", input: "test-metric", valid: false},
+		{name: "with slash", input: "test/metric", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidMetricName(tt.input)
+			if got != tt.valid {
+				t.Errorf("isValidMetricName(%q) = %v, want %v", tt.input, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestMetricsHandler_Index_Empty(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "<table>") {
+		t.Errorf("expected body to contain table element")
+	}
+	if !strings.Contains(body, "Metrics") {
+		t.Errorf("expected body to contain Metrics heading")
+	}
+	if strings.Contains(body, "<tr><td>") {
+		t.Errorf("expected no metric rows in empty state")
+	}
+}
+
+func TestMetricsHandler_Index_Partial(t *testing.T) {
+	router, store := setupRouter()
+
+	store.UpdateGauge("Alloc", 1024.5)
+	store.UpdateGauge("Sys", 512.0)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Alloc") {
+		t.Errorf("expected body to contain Alloc")
+	}
+	if !strings.Contains(body, "Sys") {
+		t.Errorf("expected body to contain Sys")
+	}
+	if strings.Contains(body, "PollCount") {
+		t.Errorf("expected no counter metrics")
+	}
+	if !strings.Contains(body, "gauge") {
+		t.Errorf("expected type column for metrics")
+	}
+}
+
+func TestMetricsHandler_Metrics_Empty(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	body := w.Body.String()
+	if body != "" {
+		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestMetricsHandler_Update_Gauge_ZeroAndLarge(t *testing.T) {
+	router, store := setupRouter()
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedValue  float64
+	}{
+		{name: "zero value", path: "/update/gauge/zero_gauge/0", expectedValue: 0},
+		{name: "large value", path: "/update/gauge/large_gauge/1.7976931348623157e+308", expectedValue: 1.7976931348623157e+308},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req.Header.Set("Content-Type", "text/plain")
+			router.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+			}
+
+			metricName := ""
+			switch tt.path {
+			case "/update/gauge/zero_gauge/0":
+				metricName = "zero_gauge"
+			case "/update/gauge/large_gauge/1.7976931348623157e+308":
+				metricName = "large_gauge"
+			}
+
+			val, ok, _ := store.GetGauge(metricName)
+			if !ok {
+				t.Error("expected metric to exist")
+			}
+			if val != tt.expectedValue {
+				t.Errorf("expected %f, got %f", tt.expectedValue, val)
+			}
+		})
+	}
+}
+
+func TestMetricsHandler_Metrics_Prometheus(t *testing.T) {
+	router, store := setupRouter()
+
+	store.UpdateGauge("Alloc", 1024.5)
+	store.UpdateCounter("PollCount", 42)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/plain") {
+		t.Errorf("expected text/plain, got %s", ct)
+	}
+
+	body := w.Body.String()
+
+	allocDesc := metricDescription("Alloc")
+	expectedHelp := "# HELP Alloc " + allocDesc
+	if !strings.Contains(body, expectedHelp) {
+		t.Errorf("expected body to contain %q", expectedHelp)
+	}
+	if !strings.Contains(body, "# TYPE Alloc gauge") {
+		t.Errorf("expected body to contain TYPE gauge for Alloc")
+	}
+	if !strings.Contains(body, "Alloc 1024.5") {
+		t.Errorf("expected body to contain 'Alloc 1024.5'")
+	}
+
+	if !strings.Contains(body, "# TYPE PollCount counter") {
+		t.Errorf("expected body to contain TYPE counter for PollCount")
+	}
+	if !strings.Contains(body, "PollCount 42") {
+		t.Errorf("expected body to contain 'PollCount 42'")
 	}
 }

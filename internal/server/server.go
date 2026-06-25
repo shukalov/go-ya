@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/shukalov/go-ya/internal/server/handlers"
 	"github.com/shukalov/go-ya/internal/server/storage"
 )
@@ -11,28 +12,30 @@ import (
 // Server - структура HTTP сервера
 type Server struct {
 	address string
-	storage storage.Storage
-	handler *handlers.MetricsHandler
+	engine  *gin.Engine
 }
 
 // NewServer - создает новый сервер
 func NewServer(address string, storage storage.Storage) *Server {
+	gin.SetMode(gin.ReleaseMode)
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+
+	h := handlers.NewMetricsHandler(storage)
+
+	engine.POST("/update/:type/:name/:value", h.Update)
+	engine.GET("/value/:type/:name", h.Get)
+	engine.GET("/", h.Index)
+	engine.GET("/metrics", h.Metrics)
+
 	return &Server{
 		address: address,
-		storage: storage,
-		handler: handlers.NewMetricsHandler(storage),
+		engine:  engine,
 	}
-}
-
-// RegisterHandlers - регистрирует обработчики
-func (s *Server) RegisterHandlers() {
-	http.HandleFunc("/update/", s.handler.Update)
-	http.HandleFunc("/value/", s.handler.Get)
 }
 
 // Run - запускает сервер
 func (s *Server) Run() error {
-	s.RegisterHandlers()
 	fmt.Printf("Server is running on %s\n", s.address)
-	return http.ListenAndServe(s.address, nil)
+	return http.ListenAndServe(s.address, s.engine)
 }
