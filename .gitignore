@@ -1,0 +1,8 @@
+.idea
+
+tmp
+
+.env
+
+cmd/server/server
+cmd/agent/agent
