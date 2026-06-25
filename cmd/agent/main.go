@@ -1,24 +1,35 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/shukalov/go-ya/internal/agent"
 )
 
 func main() {
-	// Конфигурация агента
-	config := agent.Config{
-		PollInterval:   2 * time.Second,
-		ReportInterval: 10 * time.Second,
-		ServerAddress:  "http://localhost:8080",
+	addr := flag.String("a", "localhost:8080", "address endpoint")
+	reportInterval := flag.Int("r", 10, "report interval in seconds")
+	pollInterval := flag.Int("p", 2, "poll interval in seconds")
+
+	flag.Parse()
+
+	if *reportInterval <= 0 || *pollInterval <= 0 {
+		fmt.Fprintf(os.Stderr, "intervals must be positive")
+		os.Exit(1)
 	}
 
-	// Создаем агента
+	config := agent.Config{
+		PollInterval:   time.Duration(*pollInterval) * time.Second,
+		ReportInterval: time.Duration(*reportInterval) * time.Second,
+		ServerAddress:  fmt.Sprintf("http://%s", *addr),
+	}
+
 	agent := agent.NewAgent(config)
 
-	// Запускаем агента
 	if err := agent.Run(); err != nil {
 		log.Fatalf("Agent error: %v", err)
 	}
