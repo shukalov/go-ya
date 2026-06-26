@@ -2,7 +2,10 @@ module github.com/shukalov/go-ya
 
 go 1.26.4
 
-require github.com/gin-gonic/gin v1.12.0
+require (
+	github.com/caarlos0/env/v11 v11.4.1
+	github.com/gin-gonic/gin v1.12.0
+)
 
 require (
 	github.com/bytedance/gopkg v0.1.4 // indirect

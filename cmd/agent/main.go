@@ -9,25 +9,55 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/shukalov/go-ya/internal/agent"
 )
+
+type envConfig struct {
+	Address        string `env:"ADDRESS"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+}
 
 func main() {
 	addr := flag.String("a", "localhost:8080", "address endpoint")
 	reportInterval := flag.Int("r", 10, "report interval in seconds")
 	pollInterval := flag.Int("p", 2, "poll interval in seconds")
 
-	flag.Parse()
+	var envCfg envConfig
+	if err := env.Parse(&envCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse env: %v\n", err)
+		os.Exit(1)
+	}
 
-	if *reportInterval <= 0 || *pollInterval <= 0 {
-		fmt.Fprintf(os.Stderr, "intervals must be positive")
+	if envCfg.Address == "" || envCfg.ReportInterval == 0 || envCfg.PollInterval == 0 {
+		flag.Parse()
+	}
+
+	serverAddress := envCfg.Address
+	if serverAddress == "" {
+		serverAddress = *addr
+	}
+
+	reportIntervalSec := envCfg.ReportInterval
+	if reportIntervalSec == 0 {
+		reportIntervalSec = *reportInterval
+	}
+
+	pollIntervalSec := envCfg.PollInterval
+	if pollIntervalSec == 0 {
+		pollIntervalSec = *pollInterval
+	}
+
+	if reportIntervalSec <= 0 || pollIntervalSec <= 0 {
+		fmt.Fprintf(os.Stderr, "intervals must be positive\n")
 		os.Exit(1)
 	}
 
 	config := agent.Config{
-		PollInterval:   time.Duration(*pollInterval) * time.Second,
-		ReportInterval: time.Duration(*reportInterval) * time.Second,
-		ServerAddress:  fmt.Sprintf("http://%s", *addr),
+		PollInterval:   time.Duration(pollIntervalSec) * time.Second,
+		ReportInterval: time.Duration(reportIntervalSec) * time.Second,
+		ServerAddress:  fmt.Sprintf("http://%s", serverAddress),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
