@@ -150,15 +150,13 @@ func (h *MetricsHandler) Index(c *gin.Context) {
 	}
 
 	data := indexData{}
-	defs := models.MetricDefs()
+	gaugeDefs := models.GaugeDefs()
+	counterDefs := models.CounterDefs()
 
 	for name, v := range allMetrics.Gauges {
 		desc := ""
-		for i := range defs {
-			if defs[i].Name == name {
-				desc = defs[i].Description
-				break
-			}
+		if def, ok := gaugeDefs[name]; ok {
+			desc = def.Description
 		}
 		data.Metrics = append(data.Metrics, templateMetric{
 			Name: name, Kind: "gauge", Value: strconv.FormatFloat(v, 'f', -1, 64), Desc: desc,
@@ -166,11 +164,8 @@ func (h *MetricsHandler) Index(c *gin.Context) {
 	}
 	for name, v := range allMetrics.Counters {
 		desc := ""
-		for i := range defs {
-			if defs[i].Name == name {
-				desc = defs[i].Description
-				break
-			}
+		if def, ok := counterDefs[name]; ok {
+			desc = def.Description
 		}
 		data.Metrics = append(data.Metrics, templateMetric{
 			Name: name, Kind: "counter", Value: strconv.FormatInt(v, 10), Desc: desc,
@@ -178,7 +173,9 @@ func (h *MetricsHandler) Index(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	indexTemplate.Execute(c.Writer, data)
+	if err := indexTemplate.Execute(c.Writer, data); err != nil {
+		c.String(http.StatusInternalServerError, "Template error")
+	}
 }
 
 // Metrics - возвращает метрики в формате Prometheus
@@ -192,35 +189,22 @@ func (h *MetricsHandler) Metrics(c *gin.Context) {
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	c.Writer.WriteHeader(http.StatusOK)
 
-	defs := models.MetricDefs()
+	gaugeDefs := models.GaugeDefs()
+	counterDefs := models.CounterDefs()
 
 	for name, v := range allMetrics.Gauges {
-		var def *models.MetricDef
-		for i := range defs {
-			if defs[i].Name == name {
-				def = &defs[i]
-				break
-			}
-		}
-		if def != nil {
+		if def, ok := gaugeDefs[name]; ok {
 			fmt.Fprintf(c.Writer, "# HELP %s %s\n# TYPE %s gauge\n%s %s\n\n",
-				def.Name, def.Description, def.Name, def.Name,
+				name, def.Description, name, name,
 				strconv.FormatFloat(v, 'f', -1, 64))
 		} else {
 			fmt.Fprintf(c.Writer, "%s %s\n", name, strconv.FormatFloat(v, 'f', -1, 64))
 		}
 	}
 	for name, v := range allMetrics.Counters {
-		var def *models.MetricDef
-		for i := range defs {
-			if defs[i].Name == name {
-				def = &defs[i]
-				break
-			}
-		}
-		if def != nil {
+		if def, ok := counterDefs[name]; ok {
 			fmt.Fprintf(c.Writer, "# HELP %s %s\n# TYPE %s counter\n%s %d\n\n",
-				def.Name, def.Description, def.Name, def.Name, v)
+				name, def.Description, name, name, v)
 		} else {
 			fmt.Fprintf(c.Writer, "%s %d\n", name, v)
 		}

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -31,22 +32,27 @@ func NewAgent(config Config) *Agent {
 	}
 }
 
-// Run - запускает агента
-func (a *Agent) Run() error {
+// Run - запускает агента, блокируется до отмены контекста
+func (a *Agent) Run(ctx context.Context) error {
 	fmt.Printf("Starting agent with pollInterval=%v, reportInterval=%v\n",
 		a.config.PollInterval, a.config.ReportInterval)
 	fmt.Printf("Server address: %s\n", a.config.ServerAddress)
 
 	a.collector.Collect()
 
-	reportCounter := 0
-	reportsPerCycle := int(a.config.ReportInterval / a.config.PollInterval)
+	pollTicker := time.NewTicker(a.config.PollInterval)
+	reportTicker := time.NewTicker(a.config.ReportInterval)
+	defer pollTicker.Stop()
+	defer reportTicker.Stop()
 
 	for {
-		a.collector.Collect()
-
-		reportCounter++
-		if reportCounter >= reportsPerCycle {
+		select {
+		case <-ctx.Done():
+			fmt.Printf("Agent stopped: %v\n", ctx.Err())
+			return nil
+		case <-pollTicker.C:
+			a.collector.Collect()
+		case <-reportTicker.C:
 			metrics := a.collector.GetMetrics()
 			fmt.Printf("Metrics collected (PollCount: %d)\n", metrics.Counters["PollCount"])
 
@@ -55,9 +61,7 @@ func (a *Agent) Run() error {
 			} else {
 				fmt.Printf("Metrics sent successfully (PollCount: %d)\n", metrics.Counters["PollCount"])
 			}
-			reportCounter = 0
 		}
-
-		time.Sleep(a.config.PollInterval)
 	}
 }
+

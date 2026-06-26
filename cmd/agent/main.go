@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/shukalov/go-ya/internal/agent"
@@ -28,9 +30,9 @@ func main() {
 		ServerAddress:  fmt.Sprintf("http://%s", *addr),
 	}
 
-	agent := agent.NewAgent(config)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	if err := agent.Run(); err != nil {
-		log.Fatalf("Agent error: %v", err)
-	}
+	a := agent.NewAgent(config)
+	a.Run(ctx)
 }

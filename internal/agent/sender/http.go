@@ -1,7 +1,6 @@
 package sender
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -27,7 +26,7 @@ func NewHTTPSender(serverAddress string) *HTTPSender {
 }
 
 // SendMetric - отправляет одну метрику
-func (s *HTTPSender) SendMetric(metricType models.MetricType, name string, value interface{}) error {
+func (s *HTTPSender) SendMetric(metricType string, name string, value interface{}) error {
 	var valueStr string
 	switch v := value.(type) {
 	case float64:
@@ -44,7 +43,7 @@ func (s *HTTPSender) SendMetric(metricType models.MetricType, name string, value
 		name,
 		valueStr)
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(nil))
+	req, err := http.NewRequest(http.MethodPost, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -65,15 +64,15 @@ func (s *HTTPSender) SendMetric(metricType models.MetricType, name string, value
 
 // SendAllMetrics - отправляет все метрики
 func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics) error {
-	for _, def := range models.GaugeDefs() {
-		if err := s.SendMetric(models.TypeGauge, def.Name, metrics.Gauges[def.Name]); err != nil {
-			return fmt.Errorf("failed to send gauge %s: %w", def.Name, err)
+	for name := range models.GaugeDefs() {
+		if err := s.SendMetric("gauge", name, metrics.Gauges[name]); err != nil {
+			return fmt.Errorf("failed to send gauge %s: %w", name, err)
 		}
 	}
 
-	for _, def := range models.CounterDefs() {
-		if err := s.SendMetric(models.TypeCounter, def.Name, metrics.Counters[def.Name]); err != nil {
-			return fmt.Errorf("failed to send counter %s: %w", def.Name, err)
+	for name := range models.CounterDefs() {
+		if err := s.SendMetric("counter", name, metrics.Counters[name]); err != nil {
+			return fmt.Errorf("failed to send counter %s: %w", name, err)
 		}
 	}
 

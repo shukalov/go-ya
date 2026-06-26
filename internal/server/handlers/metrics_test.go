@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,10 +12,8 @@ import (
 )
 
 func metricDescription(name string) string {
-	for _, d := range models.MetricDefs() {
-		if d.Name == name {
-			return d.Description
-		}
+	if def, ok := models.MetricDefs()[name]; ok {
+		return def.Description
 	}
 	return ""
 }
@@ -63,7 +60,7 @@ func TestMetricsHandler_Update_Gauge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req, _ := http.NewRequest(http.MethodPost, tt.path, nil)
 			req.Header.Set("Content-Type", "text/plain")
 			router.ServeHTTP(w, req)
 
@@ -106,7 +103,7 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req, _ := http.NewRequest(http.MethodPost, tt.path, nil)
 			req.Header.Set("Content-Type", "text/plain")
 			router.ServeHTTP(w, req)
 
@@ -140,7 +137,7 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
 	router, store := setupRouter()
 
-	req, _ := http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/5", bytes.NewBuffer(nil))
+	req, _ := http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/5", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -149,7 +146,7 @@ func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	req, _ = http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/3", bytes.NewBuffer(nil))
+	req, _ = http.NewRequest(http.MethodPost, "/update/counter/test_counter_acc/3", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -170,7 +167,7 @@ func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
 func TestMetricsHandler_Update_Gauge_Overwrites(t *testing.T) {
 	router, store := setupRouter()
 
-	req, _ := http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/10.5", bytes.NewBuffer(nil))
+	req, _ := http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/10.5", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -179,7 +176,7 @@ func TestMetricsHandler_Update_Gauge_Overwrites(t *testing.T) {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	req, _ = http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/20.7", bytes.NewBuffer(nil))
+	req, _ = http.NewRequest(http.MethodPost, "/update/gauge/test_gauge_overwrite/20.7", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -268,7 +265,7 @@ func TestMetricsHandler_Update_Errors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest(tt.method, tt.path, bytes.NewBuffer(nil))
+			req, _ := http.NewRequest(tt.method, tt.path, nil)
 			req.Header.Set("Content-Type", tt.contentType)
 			router.ServeHTTP(w, req)
 
@@ -502,7 +499,7 @@ func TestMetricsHandler_Update_Gauge_ZeroAndLarge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(nil))
+			req, _ := http.NewRequest(http.MethodPost, tt.path, nil)
 			req.Header.Set("Content-Type", "text/plain")
 			router.ServeHTTP(w, req)
 

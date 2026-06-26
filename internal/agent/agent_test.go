@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,7 +76,6 @@ func TestAgent_SendMetrics(t *testing.T) {
 }
 
 func TestAgent_Run(t *testing.T) {
-	// Создаем тестовый сервер
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -87,20 +87,23 @@ func TestAgent_Run(t *testing.T) {
 		ServerAddress:  server.URL,
 	}
 
-	agent := NewAgent(config)
+	a := NewAgent(config)
 
-	// Запускаем агента в горутине
-	done := make(chan bool)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
 	go func() {
-		agent.Run()
-		done <- true
+		done <- a.Run(ctx)
 	}()
 
-	// Ждем несколько циклов
 	time.Sleep(500 * time.Millisecond)
+	cancel()
 
-	// Проверяем, что метрики собираются
-	metrics := agent.collector.GetMetrics()
+	err := <-done
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+
+	metrics := a.collector.GetMetrics()
 	if metrics.Counters["PollCount"] < 3 {
 		t.Errorf("expected PollCount >= 3, got %d", metrics.Counters["PollCount"])
 	}

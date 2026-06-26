@@ -41,7 +41,7 @@ func TestHTTPSender_SendMetric_Success(t *testing.T) {
 	defer server.Close()
 
 	sender := NewHTTPSender(server.URL)
-	err := sender.SendMetric(models.TypeGauge, "test", 123.45)
+	err := sender.SendMetric("gauge", "test", 123.45)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestHTTPSender_SendMetric_Error(t *testing.T) {
 	defer server.Close()
 
 	sender := NewHTTPSender(server.URL)
-	err := sender.SendMetric(models.TypeGauge, "test", 123.45)
+	err := sender.SendMetric("gauge", "test", 123.45)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -65,7 +65,7 @@ func TestHTTPSender_SendMetric_InvalidValue(t *testing.T) {
 	sender := NewHTTPSender("http://localhost:8080")
 
 	// Передаем неподдерживаемый тип
-	err := sender.SendMetric(models.TypeGauge, "test", "invalid")
+	err := sender.SendMetric("gauge", "test", "invalid")
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -122,7 +122,7 @@ func TestHTTPSender_Timeout(t *testing.T) {
 	sender := NewHTTPSender(server.URL)
 	sender.client.Timeout = 1 * time.Second
 
-	err := sender.SendMetric(models.TypeGauge, "test", 123.45)
+	err := sender.SendMetric("gauge", "test", 123.45)
 	if err == nil {
 		t.Error("expected timeout error, got nil")
 	}
