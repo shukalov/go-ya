@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
-	"log"
 
 	"github.com/caarlos0/env/v11"
+	"go.uber.org/zap"
+
 	"github.com/shukalov/go-ya/internal/server"
+	serverlogger "github.com/shukalov/go-ya/internal/server/logger"
 	"github.com/shukalov/go-ya/internal/server/storage"
 )
 
@@ -14,11 +16,14 @@ type envConfig struct {
 }
 
 func main() {
+	logger := serverlogger.New()
+	defer logger.Sync()
+
 	addr := flag.String("a", "localhost:8080", "address endpoint")
 
 	var envCfg envConfig
 	if err := env.Parse(&envCfg); err != nil {
-		log.Fatalf("Failed to parse env: %v\n", err)
+		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
 	if envCfg.Address == "" {
@@ -31,9 +36,9 @@ func main() {
 	}
 
 	storage := storage.NewMemStorage()
-	srv := server.NewServer(serverAddress, storage)
+	srv := server.NewServer(serverAddress, storage, logger)
 
 	if err := srv.Run(); err != nil {
-		log.Fatalf("Server error: %v", err)
+		logger.Fatal("server error", zap.Error(err))
 	}
 }

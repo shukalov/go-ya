@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func TestNewAgent(t *testing.T) {
@@ -13,6 +15,7 @@ func TestNewAgent(t *testing.T) {
 		PollInterval:   2 * time.Second,
 		ReportInterval: 10 * time.Second,
 		ServerAddress:  "http://localhost:8080",
+		Logger:         zap.NewNop(),
 	}
 
 	agent := NewAgent(config)
@@ -35,6 +38,7 @@ func TestAgent_CollectMetrics(t *testing.T) {
 		PollInterval:   1 * time.Second,
 		ReportInterval: 10 * time.Second,
 		ServerAddress:  "http://localhost:8080",
+		Logger:         zap.NewNop(),
 	}
 
 	agent := NewAgent(config)
@@ -59,6 +63,7 @@ func TestAgent_SendMetrics(t *testing.T) {
 		PollInterval:   1 * time.Second,
 		ReportInterval: 2 * time.Second,
 		ServerAddress:  server.URL,
+		Logger:         zap.NewNop(),
 	}
 
 	agent := NewAgent(config)
@@ -85,23 +90,22 @@ func TestAgent_Run(t *testing.T) {
 		PollInterval:   100 * time.Millisecond,
 		ReportInterval: 200 * time.Millisecond,
 		ServerAddress:  server.URL,
+		Logger:         zap.NewNop(),
 	}
 
 	a := NewAgent(config)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error)
+	done := make(chan struct{})
 	go func() {
-		done <- a.Run(ctx)
+		a.Run(ctx)
+		close(done)
 	}()
 
 	time.Sleep(500 * time.Millisecond)
 	cancel()
 
-	err := <-done
-	if err != nil {
-		t.Errorf("expected nil, got %v", err)
-	}
+	<-done
 
 	metrics := a.collector.GetMetrics()
 	if metrics.Counters["PollCount"] < 3 {

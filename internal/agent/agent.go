@@ -2,8 +2,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/shukalov/go-ya/internal/agent/collector"
 	"github.com/shukalov/go-ya/internal/agent/sender"
@@ -14,6 +15,7 @@ type Config struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	ServerAddress  string
+	Logger         *zap.Logger
 }
 
 // Agent - основной компонент агента
@@ -33,10 +35,12 @@ func NewAgent(config Config) *Agent {
 }
 
 // Run - запускает агента, блокируется до отмены контекста
-func (a *Agent) Run(ctx context.Context) error {
-	fmt.Printf("Starting agent with pollInterval=%v, reportInterval=%v\n",
-		a.config.PollInterval, a.config.ReportInterval)
-	fmt.Printf("Server address: %s\n", a.config.ServerAddress)
+func (a *Agent) Run(ctx context.Context) {
+	a.config.Logger.Info("starting agent",
+		zap.Duration("pollInterval", a.config.PollInterval),
+		zap.Duration("reportInterval", a.config.ReportInterval),
+		zap.String("serverAddress", a.config.ServerAddress),
+	)
 
 	a.collector.Collect()
 
@@ -48,20 +52,19 @@ func (a *Agent) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("Agent stopped: %v\n", ctx.Err())
-			return nil
+			a.config.Logger.Info("agent stopped", zap.Error(ctx.Err()))
+			return
 		case <-pollTicker.C:
 			a.collector.Collect()
 		case <-reportTicker.C:
 			metrics := a.collector.GetMetrics()
-			fmt.Printf("Metrics collected (PollCount: %d)\n", metrics.Counters["PollCount"])
+			a.config.Logger.Info("metrics collected", zap.Int64("PollCount", metrics.Counters["PollCount"]))
 
 			if err := a.sender.SendAllMetrics(metrics); err != nil {
-				fmt.Printf("Error sending metrics: %v\n", err)
+				a.config.Logger.Error("error sending metrics", zap.Error(err))
 			} else {
-				fmt.Printf("Metrics sent successfully (PollCount: %d)\n", metrics.Counters["PollCount"])
+				a.config.Logger.Info("metrics sent", zap.Int64("PollCount", metrics.Counters["PollCount"]))
 			}
 		}
 	}
 }
-

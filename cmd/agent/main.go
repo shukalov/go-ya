@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/caarlos0/env/v11"
+	"go.uber.org/zap"
+
 	"github.com/shukalov/go-ya/internal/agent"
+	agentlogger "github.com/shukalov/go-ya/internal/agent/logger"
 )
 
 type envConfig struct {
@@ -20,14 +21,16 @@ type envConfig struct {
 }
 
 func main() {
+	logger := agentlogger.New()
+	defer logger.Sync()
+
 	addr := flag.String("a", "localhost:8080", "address endpoint")
 	reportInterval := flag.Int("r", 10, "report interval in seconds")
 	pollInterval := flag.Int("p", 2, "poll interval in seconds")
 
 	var envCfg envConfig
 	if err := env.Parse(&envCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse env: %v\n", err)
-		os.Exit(1)
+		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
 	if envCfg.Address == "" || envCfg.ReportInterval == 0 || envCfg.PollInterval == 0 {
@@ -50,14 +53,14 @@ func main() {
 	}
 
 	if reportIntervalSec <= 0 || pollIntervalSec <= 0 {
-		fmt.Fprintf(os.Stderr, "intervals must be positive\n")
-		os.Exit(1)
+		logger.Fatal("intervals must be positive")
 	}
 
 	config := agent.Config{
 		PollInterval:   time.Duration(pollIntervalSec) * time.Second,
 		ReportInterval: time.Duration(reportIntervalSec) * time.Second,
-		ServerAddress:  fmt.Sprintf("http://%s", serverAddress),
+		ServerAddress:  "http://" + serverAddress,
+		Logger:         logger,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
