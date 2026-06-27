@@ -28,7 +28,9 @@ func NewServer(address string, storage storage.Storage, logger *zap.Logger) *Ser
 	h := handlers.NewMetricsHandler(storage)
 
 	engine.POST("/update/:type/:name/:value", h.Update)
+	engine.POST("/update", h.UpdateJSON)
 	engine.GET("/value/:type/:name", h.Get)
+	engine.POST("/value", h.GetJSON)
 	engine.GET("/", h.Index)
 	engine.GET("/metrics", h.Metrics)
 

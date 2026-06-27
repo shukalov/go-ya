@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -209,4 +210,88 @@ func (h *MetricsHandler) Metrics(c *gin.Context) {
 			fmt.Fprintf(c.Writer, "%s %d\n", name, v)
 		}
 	}
+}
+
+// UpdateJSON - обработчик для обновления метрик через JSON
+func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
+	var m models.Metrics
+	if err := json.NewDecoder(c.Request.Body).Decode(&m); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+
+	if !isValidMetricName(m.ID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric name"})
+		return
+	}
+
+	switch m.MType {
+	case "gauge":
+		if m.Value == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
+			return
+		}
+		if err := h.storage.UpdateGauge(m.ID, *m.Value); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
+			return
+		}
+	case "counter":
+		if m.Delta == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "delta is required for counter"})
+			return
+		}
+		if err := h.storage.UpdateCounter(m.ID, *m.Delta); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type. Allowed: gauge, counter"})
+		return
+	}
+
+	c.JSON(http.StatusOK, m)
+}
+
+// GetJSON - обработчик для получения метрик через JSON
+func (h *MetricsHandler) GetJSON(c *gin.Context) {
+	var m models.Metrics
+	if err := json.NewDecoder(c.Request.Body).Decode(&m); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+
+	if !isValidMetricName(m.ID) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
+		return
+	}
+
+	switch m.MType {
+	case "gauge":
+		value, ok, err := h.storage.GetGauge(m.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
+			return
+		}
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
+			return
+		}
+		m.Value = &value
+	case "counter":
+		value, ok, err := h.storage.GetCounter(m.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
+			return
+		}
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "metric not found"})
+			return
+		}
+		m.Delta = &value
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid metric type"})
+		return
+	}
+
+	c.JSON(http.StatusOK, m)
 }

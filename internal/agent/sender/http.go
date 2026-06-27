@@ -1,9 +1,10 @@
 package sender
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/shukalov/go-ya/pkg/models"
@@ -27,27 +28,30 @@ func NewHTTPSender(serverAddress string) *HTTPSender {
 
 // SendMetric - отправляет одну метрику
 func (s *HTTPSender) SendMetric(metricType string, name string, value interface{}) error {
-	var valueStr string
+	m := models.Metrics{
+		ID:    name,
+		MType: metricType,
+	}
+
 	switch v := value.(type) {
 	case float64:
-		valueStr = strconv.FormatFloat(v, 'f', -1, 64)
+		m.Value = &v
 	case int64:
-		valueStr = strconv.FormatInt(v, 10)
+		m.Delta = &v
 	default:
 		return fmt.Errorf("unsupported value type: %T", value)
 	}
 
-	url := fmt.Sprintf("%s/update/%s/%s/%s",
-		s.serverAddress,
-		metricType,
-		name,
-		valueStr)
+	body, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric: %w", err)
+	}
 
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/update", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
