@@ -2,7 +2,9 @@ package logger
 
 import "go.uber.org/zap"
 
+var L = zap.NewNop()
+
 func New() *zap.Logger {
-	l, _ := zap.NewProduction()
-	return l
+	L, _ = zap.NewProduction()
+	return L
 }

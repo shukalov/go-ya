@@ -6,3 +6,4 @@ tmp
 
 cmd/server/server
 cmd/agent/agent
+coverage.out

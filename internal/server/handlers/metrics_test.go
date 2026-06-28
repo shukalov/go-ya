@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,9 @@ func setupRouter() (*gin.Engine, *storage.MemStorage) {
 
 	router := gin.New()
 	router.POST("/update/:type/:name/:value", handler.Update)
+	router.POST("/update", handler.UpdateJSON)
 	router.GET("/value/:type/:name", handler.Get)
+	router.POST("/value", handler.GetJSON)
 	router.GET("/", handler.Index)
 	router.GET("/metrics", handler.Metrics)
 
@@ -564,5 +567,200 @@ func TestMetricsHandler_Metrics_Prometheus(t *testing.T) {
 	}
 	if !strings.Contains(body, "PollCount 42") {
 		t.Errorf("expected body to contain 'PollCount 42'")
+	}
+}
+
+func updateJSON(t *testing.T, router *gin.Engine, m models.Metrics) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(m)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/update", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func getJSON(t *testing.T, router *gin.Engine, m models.Metrics) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(m)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/value", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func TestUpdateJSON_Gauge(t *testing.T) {
+	router, store := setupRouter()
+
+	v := 123.45
+	w := updateJSON(t, router, models.Metrics{ID: "test_gauge", MType: "gauge", Value: &v})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	resp := models.Metrics{}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.ID != "test_gauge" || resp.MType != "gauge" || *resp.Value != 123.45 {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+
+	stored, ok, _ := store.GetGauge("test_gauge")
+	if !ok || stored != 123.45 {
+		t.Errorf("expected stored 123.45, got %v, %v", stored, ok)
+	}
+}
+
+func TestUpdateJSON_Counter(t *testing.T) {
+	router, store := setupRouter()
+
+	d := int64(5)
+	w := updateJSON(t, router, models.Metrics{ID: "test_counter", MType: "counter", Delta: &d})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	resp := models.Metrics{}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.ID != "test_counter" || resp.MType != "counter" || *resp.Delta != 5 {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+
+	stored, ok, _ := store.GetCounter("test_counter")
+	if !ok || stored != 5 {
+		t.Errorf("expected stored 5, got %v, %v", stored, ok)
+	}
+}
+
+func TestUpdateJSON_InvalidJSON(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/update", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateJSON_InvalidName(t *testing.T) {
+	router, _ := setupRouter()
+
+	v := 1.0
+	w := updateJSON(t, router, models.Metrics{ID: "", MType: "gauge", Value: &v})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateJSON_GaugeMissingValue(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := updateJSON(t, router, models.Metrics{ID: "g", MType: "gauge"})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateJSON_CounterMissingDelta(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := updateJSON(t, router, models.Metrics{ID: "c", MType: "counter"})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateJSON_InvalidType(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := updateJSON(t, router, models.Metrics{ID: "m", MType: "unknown"})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetJSON_Gauge(t *testing.T) {
+	router, store := setupRouter()
+	store.UpdateGauge("gauge1", 42.5)
+
+	w := getJSON(t, router, models.Metrics{ID: "gauge1", MType: "gauge"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	resp := models.Metrics{}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.ID != "gauge1" || resp.MType != "gauge" {
+		t.Errorf("unexpected id/type: %+v", resp)
+	}
+	if resp.Value == nil || *resp.Value != 42.5 {
+		t.Errorf("expected value 42.5, got %+v", resp.Value)
+	}
+}
+
+func TestGetJSON_Counter(t *testing.T) {
+	router, store := setupRouter()
+	store.UpdateCounter("counter1", 99)
+
+	w := getJSON(t, router, models.Metrics{ID: "counter1", MType: "counter"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	resp := models.Metrics{}
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.ID != "counter1" || resp.MType != "counter" {
+		t.Errorf("unexpected id/type: %+v", resp)
+	}
+	if resp.Delta == nil || *resp.Delta != 99 {
+		t.Errorf("expected delta 99, got %+v", resp.Delta)
+	}
+}
+
+func TestGetJSON_NotFound(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := getJSON(t, router, models.Metrics{ID: "nonexistent", MType: "gauge"})
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetJSON_InvalidJSON(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/value", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetJSON_InvalidName(t *testing.T) {
+	router, _ := setupRouter()
+
+	w := getJSON(t, router, models.Metrics{ID: "", MType: "gauge"})
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
 	}
 }
