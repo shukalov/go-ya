@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -35,11 +36,24 @@ func TestHTTPSender_SendMetric_Success(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
 		}
+		if r.Header.Get("Content-Encoding") != "gzip" {
+			t.Errorf("expected gzip, got %s", r.Header.Get("Content-Encoding"))
+		}
 		if r.URL.Path != "/update" {
 			t.Errorf("expected /update, got %s", r.URL.Path)
 		}
 
-		body, _ := io.ReadAll(r.Body)
+		var reader io.Reader = r.Body
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				t.Errorf("failed to create gzip reader: %v", err)
+			}
+			defer gz.Close()
+			reader = gz
+		}
+
+		body, _ := io.ReadAll(reader)
 		var m models.Metrics
 		if err := json.Unmarshal(body, &m); err != nil {
 			t.Errorf("failed to unmarshal body: %v", err)
@@ -67,7 +81,17 @@ func TestHTTPSender_SendMetric_Success(t *testing.T) {
 
 func TestHTTPSender_SendMetric_Counter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		var reader io.Reader = r.Body
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				t.Errorf("failed to create gzip reader: %v", err)
+			}
+			defer gz.Close()
+			reader = gz
+		}
+
+		body, _ := io.ReadAll(reader)
 		var m models.Metrics
 		if err := json.Unmarshal(body, &m); err != nil {
 			t.Errorf("failed to unmarshal body: %v", err)

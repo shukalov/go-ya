@@ -2,6 +2,7 @@ package sender
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,11 +48,21 @@ func (s *HTTPSender) SendMetric(metricType string, name string, value interface{
 		return fmt.Errorf("failed to marshal metric: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/update", bytes.NewReader(body))
+	var buf bytes.Buffer
+	gz, _ := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+	if _, err := gz.Write(body); err != nil {
+		return fmt.Errorf("failed to compress body: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/update", &buf)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
