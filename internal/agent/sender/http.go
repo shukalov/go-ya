@@ -49,7 +49,10 @@ func (s *HTTPSender) SendMetric(metricType string, name string, value interface{
 	}
 
 	var buf bytes.Buffer
-	gz, _ := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+	gz, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip writer: %w", err)
+	}
 	if _, err := gz.Write(body); err != nil {
 		return fmt.Errorf("failed to compress body: %w", err)
 	}

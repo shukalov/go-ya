@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -173,10 +174,13 @@ func (h *MetricsHandler) Index(c *gin.Context) {
 		})
 	}
 
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	if err := indexTemplate.Execute(c.Writer, data); err != nil {
+	var buf bytes.Buffer
+	if err := indexTemplate.Execute(&buf, data); err != nil {
 		c.String(http.StatusInternalServerError, "Template error")
+		return
 	}
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Writer.Write(buf.Bytes())
 }
 
 // Metrics - возвращает метрики в формате Prometheus
