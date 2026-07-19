@@ -17,6 +17,7 @@ type envConfig struct {
 	StoreInterval   int    `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 func override[T comparable](flag *T, env T) {
@@ -34,13 +35,14 @@ func main() {
 	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
 	fileStoragePath := flag.String("f", "/tmp/metrics-snapshot.json", "file storage path")
 	restore := flag.Bool("r", false, "restore metrics from file on startup")
+	databaseDSN := flag.String("d", "", "database DSN (PostgreSQL)")
 
 	var envCfg envConfig
 	if err := env.Parse(&envCfg); err != nil {
 		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
-	if envCfg.Address == "" || envCfg.StoreInterval == 0 || envCfg.FileStoragePath == "" {
+	if envCfg.Address == "" || envCfg.StoreInterval == 0 || envCfg.FileStoragePath == "" || envCfg.DatabaseDSN == "" {
 		flag.Parse()
 	}
 
@@ -48,6 +50,7 @@ func main() {
 	override(storeInterval, envCfg.StoreInterval)
 	override(fileStoragePath, envCfg.FileStoragePath)
 	override(restore, envCfg.Restore)
+	override(databaseDSN, envCfg.DatabaseDSN)
 
 	fs := storage.NewFileBackedStorage(*fileStoragePath, time.Duration(*storeInterval)*time.Second)
 
@@ -61,7 +64,7 @@ func main() {
 		go fs.Run()
 	}
 
-	srv := server.NewServer(*addr, fs, logger)
+	srv := server.NewServer(*addr, fs, logger, *databaseDSN)
 
 	if err := srv.Run(); err != nil {
 		logger.Fatal("server error", zap.Error(err))
