@@ -10,37 +10,105 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 
 	"github.com/shukalov/go-ya/internal/server/handlers"
 	"github.com/shukalov/go-ya/internal/server/middleware"
 	"github.com/shukalov/go-ya/internal/server/storage"
+	"github.com/shukalov/go-ya/internal/server/storage/migrations"
 )
 
-type Server struct {
-	address string
-	engine  *gin.Engine
-	logger  *zap.Logger
-	db      *sql.DB
-	dsn     string
+type Config struct {
+	Address       string
+	Logger        *zap.Logger
+	DatabaseDSN   string
+	FilePath      string
+	StoreInterval time.Duration
+	Restore       bool
 }
 
-func NewServer(address string, storage storage.Storage, logger *zap.Logger, dsn string) *Server {
+type Server struct {
+	cfg    Config
+	engine *gin.Engine
+	db     *sql.DB
+	store  storage.Storage
+}
+
+func NewServer(cfg Config) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
-	s := &Server{
-		address: address,
-		logger:  logger,
-		dsn:     dsn,
-	}
+	s := &Server{cfg: cfg}
 
 	s.engine = gin.New()
 	s.engine.Use(gin.Recovery())
-	s.engine.Use(middleware.Logging(logger))
+	s.engine.Use(middleware.Logging(cfg.Logger))
 	s.engine.Use(gzip.DefaultDecompressHandle)
 	s.engine.Use(middleware.Compress())
 
-	h := handlers.NewMetricsHandler(storage)
+	return s
+}
+
+func (s *Server) initDB() error {
+	db, err := sql.Open("pgx", s.cfg.DatabaseDSN)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	s.db = db
+	return nil
+}
+
+func (s *Server) Migrate() error {
+	goose.SetBaseFS(migrations.EmbedFS)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+	return goose.Up(s.db, ".")
+}
+
+func (s *Server) initDBStorage() error {
+	if err := s.initDB(); err != nil {
+		return err
+	}
+	if err := s.Migrate(); err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
+	dbs := storage.NewDBStorage(s.db, s.cfg.StoreInterval)
+
+	if s.cfg.Restore {
+		if err := dbs.Load(); err != nil {
+			s.cfg.Logger.Error("failed to restore metrics from database", zap.Error(err))
+		}
+	}
+
+	if s.cfg.StoreInterval > 0 {
+		go dbs.Run()
+	}
+
+	s.store = dbs
+	return nil
+}
+
+func (s *Server) initFileStorage() error {
+	fs := storage.NewFileBackedStorage(s.cfg.FilePath, s.cfg.StoreInterval)
+
+	if s.cfg.Restore {
+		if err := fs.Load(); err != nil {
+			return fmt.Errorf("failed to restore metrics: %w", err)
+		}
+	}
+
+	if s.cfg.StoreInterval > 0 {
+		go fs.Run()
+	}
+
+	s.store = fs
+	return nil
+}
+
+func (s *Server) routes() {
+	h := handlers.NewMetricsHandler(s.store)
 
 	s.engine.POST("/update/:type/:name/:value", h.Update)
 	s.engine.POST("/update", h.UpdateJSON)
@@ -62,17 +130,6 @@ func NewServer(address string, storage storage.Storage, logger *zap.Logger, dsn 
 		}
 		c.String(http.StatusOK, "OK")
 	})
-
-	return s
-}
-
-func (s *Server) runDB() error {
-	db, err := sql.Open("pgx", s.dsn)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
-	}
-	s.db = db
-	return nil
 }
 
 func (s *Server) Close() {
@@ -82,12 +139,27 @@ func (s *Server) Close() {
 }
 
 func (s *Server) Run() error {
-	s.logger.Info("server starting", zap.String("address", s.address))
-	if s.dsn != "" {
-		if err := s.runDB(); err != nil {
+	s.cfg.Logger.Info("server starting", zap.String("address", s.cfg.Address))
+	defer s.Close()
+
+	switch {
+	case s.cfg.DatabaseDSN != "":
+		if err := s.initDBStorage(); err != nil {
 			return err
 		}
-		defer s.Close()
+		s.cfg.Logger.Info("using database storage")
+
+	case s.cfg.FilePath != "":
+		if err := s.initFileStorage(); err != nil {
+			return err
+		}
+		s.cfg.Logger.Info("using file storage")
+
+	default:
+		s.store = storage.NewMemStorage()
+		s.cfg.Logger.Info("using memory storage")
 	}
-	return http.ListenAndServe(s.address, s.engine)
+
+	s.routes()
+	return http.ListenAndServe(s.cfg.Address, s.engine)
 }

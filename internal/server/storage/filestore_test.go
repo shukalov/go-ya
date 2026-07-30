@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,9 +12,9 @@ func TestFileBackedStorage_SaveAndLoad(t *testing.T) {
 	path := filepath.Join(dir, "test.json")
 
 	fs := NewFileBackedStorage(path, 0)
-	fs.UpdateGauge("gauge1", 1.1)
-	fs.UpdateGauge("gauge2", 2.2)
-	fs.UpdateCounter("counter1", 10)
+	fs.UpdateGauge(context.Background(),"gauge1", 1.1)
+	fs.UpdateGauge(context.Background(),"gauge2", 2.2)
+	fs.UpdateCounter(context.Background(),"counter1", 10)
 
 	if err := fs.Save(); err != nil {
 		t.Fatalf("Save failed: %v", err)
@@ -24,17 +25,17 @@ func TestFileBackedStorage_SaveAndLoad(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	val, ok, _ := fs2.GetGauge("gauge1")
+	val, ok, _ := fs2.GetGauge(context.Background(),"gauge1")
 	if !ok || val != 1.1 {
 		t.Errorf("expected gauge1=1.1, got %v, %v", val, ok)
 	}
 
-	val2, ok2, _ := fs2.GetCounter("counter1")
+	val2, ok2, _ := fs2.GetCounter(context.Background(),"counter1")
 	if !ok2 || val2 != 10 {
 		t.Errorf("expected counter1=10, got %v, %v", val2, ok2)
 	}
 
-	all, _ := fs2.GetAllMetrics()
+	all, _ := fs2.GetAllMetrics(context.Background())
 	if len(all.Gauges) != 2 {
 		t.Errorf("expected 2 gauges, got %d", len(all.Gauges))
 	}
@@ -82,18 +83,18 @@ func TestFileBackedStorage_Load_RestoresGaugeOnly(t *testing.T) {
 	path := filepath.Join(dir, "gauge_only.json")
 
 	fs := NewFileBackedStorage(path, 0)
-	fs.UpdateGauge("only_gauge", 42.5)
+	fs.UpdateGauge(context.Background(),"only_gauge", 42.5)
 	fs.Save()
 
 	fs2 := NewFileBackedStorage(path, 0)
 	fs2.Load()
 
-	val, ok, _ := fs2.GetGauge("only_gauge")
+	val, ok, _ := fs2.GetGauge(context.Background(),"only_gauge")
 	if !ok || val != 42.5 {
 		t.Errorf("expected only_gauge=42.5, got %v, %v", val, ok)
 	}
 
-	_, ok, _ = fs2.GetCounter("only_gauge")
+	_, ok, _ = fs2.GetCounter(context.Background(),"only_gauge")
 	if ok {
 		t.Error("expected only_gauge to not be a counter")
 	}

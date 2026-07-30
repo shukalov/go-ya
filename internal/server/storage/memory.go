@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"sync"
 
 	"github.com/shukalov/go-ya/pkg/models"
@@ -22,7 +23,7 @@ func NewMemStorage() *MemStorage {
 }
 
 // UpdateGauge - обновляет или добавляет gauge метрику
-func (s *MemStorage) UpdateGauge(name string, value float64) error {
+func (s *MemStorage) UpdateGauge(_ context.Context, name string, value float64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gauges[name] = value
@@ -30,7 +31,7 @@ func (s *MemStorage) UpdateGauge(name string, value float64) error {
 }
 
 // UpdateCounter - обновляет или добавляет counter метрику
-func (s *MemStorage) UpdateCounter(name string, value int64) error {
+func (s *MemStorage) UpdateCounter(_ context.Context, name string, value int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.counters[name] += value
@@ -38,7 +39,7 @@ func (s *MemStorage) UpdateCounter(name string, value int64) error {
 }
 
 // GetGauge - получает значение gauge метрики
-func (s *MemStorage) GetGauge(name string) (float64, bool, error) {
+func (s *MemStorage) GetGauge(_ context.Context, name string) (float64, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok := s.gauges[name]
@@ -46,7 +47,7 @@ func (s *MemStorage) GetGauge(name string) (float64, bool, error) {
 }
 
 // GetCounter - получает значение counter метрики
-func (s *MemStorage) GetCounter(name string) (int64, bool, error) {
+func (s *MemStorage) GetCounter(_ context.Context, name string) (int64, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok := s.counters[name]
@@ -54,7 +55,7 @@ func (s *MemStorage) GetCounter(name string) (int64, bool, error) {
 }
 
 // GetAllMetrics - возвращает все метрики
-func (s *MemStorage) GetAllMetrics() (models.RuntimeMetrics, error) {
+func (s *MemStorage) GetAllMetrics(_ context.Context) (models.RuntimeMetrics, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

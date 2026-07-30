@@ -58,10 +58,7 @@ func isValidMetricName(name string) bool {
 
 // Update - обработчик для обновления метрик
 func (h *MetricsHandler) Update(c *gin.Context) {
-	// if c.Request.Header.Get("Content-Type") != "text/plain" {
-	// 	c.String(http.StatusBadRequest, "Invalid Content-Type")
-	// 	return
-	// }
+	ctx := c.Request.Context()
 
 	metricType := c.Param("type")
 	metricName := c.Param("name")
@@ -79,7 +76,7 @@ func (h *MetricsHandler) Update(c *gin.Context) {
 			c.String(http.StatusBadRequest, fmt.Sprintf("Invalid gauge value: '%s'", valueStr))
 			return
 		}
-		if err := h.storage.UpdateGauge(metricName, value); err != nil {
+		if err := h.storage.UpdateGauge(ctx, metricName, value); err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Storage error: %v", err))
 			return
 		}
@@ -90,7 +87,7 @@ func (h *MetricsHandler) Update(c *gin.Context) {
 			c.String(http.StatusBadRequest, fmt.Sprintf("Invalid counter value: '%s'", valueStr))
 			return
 		}
-		if err := h.storage.UpdateCounter(metricName, value); err != nil {
+		if err := h.storage.UpdateCounter(ctx, metricName, value); err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Storage error: %v", err))
 			return
 		}
@@ -105,6 +102,7 @@ func (h *MetricsHandler) Update(c *gin.Context) {
 
 // Get - обработчик для получения значений метрик
 func (h *MetricsHandler) Get(c *gin.Context) {
+	ctx := c.Request.Context()
 	metricType := c.Param("type")
 	metricName := c.Param("name")
 
@@ -115,7 +113,7 @@ func (h *MetricsHandler) Get(c *gin.Context) {
 
 	switch metricType {
 	case "gauge":
-		value, ok, err := h.storage.GetGauge(metricName)
+		value, ok, err := h.storage.GetGauge(ctx, metricName)
 		if err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Storage error: %v", err))
 			return
@@ -127,7 +125,7 @@ func (h *MetricsHandler) Get(c *gin.Context) {
 		c.String(http.StatusOK, "%s", strconv.FormatFloat(value, 'f', -1, 64))
 
 	case "counter":
-		value, ok, err := h.storage.GetCounter(metricName)
+		value, ok, err := h.storage.GetCounter(ctx, metricName)
 		if err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Storage error: %v", err))
 			return
@@ -145,7 +143,8 @@ func (h *MetricsHandler) Get(c *gin.Context) {
 
 // Index - возвращает HTML-страницу со списком метрик
 func (h *MetricsHandler) Index(c *gin.Context) {
-	allMetrics, err := h.storage.GetAllMetrics()
+	ctx := c.Request.Context()
+	allMetrics, err := h.storage.GetAllMetrics(ctx)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Storage error")
 		return
@@ -185,7 +184,8 @@ func (h *MetricsHandler) Index(c *gin.Context) {
 
 // Metrics - возвращает метрики в формате Prometheus
 func (h *MetricsHandler) Metrics(c *gin.Context) {
-	allMetrics, err := h.storage.GetAllMetrics()
+	ctx := c.Request.Context()
+	allMetrics, err := h.storage.GetAllMetrics(ctx)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Storage error")
 		return
@@ -218,6 +218,7 @@ func (h *MetricsHandler) Metrics(c *gin.Context) {
 
 // UpdateJSON - обработчик для обновления метрик через JSON
 func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
+	ctx := c.Request.Context()
 	var m models.Metrics
 	if err := json.NewDecoder(c.Request.Body).Decode(&m); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
@@ -235,7 +236,7 @@ func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "value is required for gauge"})
 			return
 		}
-		if err := h.storage.UpdateGauge(m.ID, *m.Value); err != nil {
+		if err := h.storage.UpdateGauge(ctx, m.ID, *m.Value); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
 			return
 		}
@@ -244,7 +245,7 @@ func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "delta is required for counter"})
 			return
 		}
-		if err := h.storage.UpdateCounter(m.ID, *m.Delta); err != nil {
+		if err := h.storage.UpdateCounter(ctx, m.ID, *m.Delta); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
 			return
 		}
@@ -258,6 +259,7 @@ func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
 
 // GetJSON - обработчик для получения метрик через JSON
 func (h *MetricsHandler) GetJSON(c *gin.Context) {
+	ctx := c.Request.Context()
 	var m models.Metrics
 	if err := json.NewDecoder(c.Request.Body).Decode(&m); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
@@ -271,7 +273,7 @@ func (h *MetricsHandler) GetJSON(c *gin.Context) {
 
 	switch m.MType {
 	case "gauge":
-		value, ok, err := h.storage.GetGauge(m.ID)
+		value, ok, err := h.storage.GetGauge(ctx, m.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
 			return
@@ -282,7 +284,7 @@ func (h *MetricsHandler) GetJSON(c *gin.Context) {
 		}
 		m.Value = &value
 	case "counter":
-		value, ok, err := h.storage.GetCounter(m.ID)
+		value, ok, err := h.storage.GetCounter(ctx, m.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
 			return

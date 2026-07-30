@@ -9,7 +9,6 @@ import (
 
 	"github.com/shukalov/go-ya/internal/server"
 	serverlogger "github.com/shukalov/go-ya/internal/server/logger"
-	"github.com/shukalov/go-ya/internal/server/storage"
 )
 
 type envConfig struct {
@@ -52,19 +51,14 @@ func main() {
 	override(restore, envCfg.Restore)
 	override(databaseDSN, envCfg.DatabaseDSN)
 
-	fs := storage.NewFileBackedStorage(*fileStoragePath, time.Duration(*storeInterval)*time.Second)
-
-	if *restore {
-		if err := fs.Load(); err != nil {
-			logger.Error("failed to restore metrics", zap.Error(err))
-		}
-	}
-
-	if *storeInterval > 0 {
-		go fs.Run()
-	}
-
-	srv := server.NewServer(*addr, fs, logger, *databaseDSN)
+	srv := server.NewServer(server.Config{
+		Address:       *addr,
+		Logger:        logger,
+		DatabaseDSN:   *databaseDSN,
+		FilePath:      *fileStoragePath,
+		StoreInterval: time.Duration(*storeInterval) * time.Second,
+		Restore:       *restore,
+	})
 
 	if err := srv.Run(); err != nil {
 		logger.Fatal("server error", zap.Error(err))

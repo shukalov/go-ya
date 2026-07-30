@@ -12,9 +12,14 @@ import (
 
 func setupTestServer(dsn string) *Server {
 	gin.SetMode(gin.TestMode)
-	logger := zap.NewNop()
-	store := storage.NewMemStorage()
-	return NewServer("localhost:8080", store, logger, dsn)
+	srv := NewServer(Config{
+		Address:     "localhost:8080",
+		Logger:      zap.NewNop(),
+		DatabaseDSN: dsn,
+	})
+	srv.store = storage.NewMemStorage()
+	srv.routes()
+	return srv
 }
 
 func TestPingHandler_NoDSN(t *testing.T) {
@@ -35,8 +40,8 @@ func TestPingHandler_NoDSN(t *testing.T) {
 func TestPingHandler_InvalidDSN(t *testing.T) {
 	srv := setupTestServer("postgres://invalid:invalid@localhost:9999/invalid")
 
-	if err := srv.runDB(); err != nil {
-		t.Fatalf("runDB failed: %v", err)
+	if err := srv.initDB(); err != nil {
+		t.Fatalf("initDB failed: %v", err)
 	}
 	defer srv.Close()
 

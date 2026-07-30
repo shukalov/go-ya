@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -31,7 +32,7 @@ func (fs *FileBackedStorage) Save() error {
 	fs.fileMu.Lock()
 	defer fs.fileMu.Unlock()
 
-	metrics, err := fs.GetAllMetrics()
+	metrics, err := fs.MemStorage.GetAllMetrics(context.Background())
 	if err != nil {
 		return err
 	}

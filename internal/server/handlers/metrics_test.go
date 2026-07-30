@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -125,7 +126,7 @@ func TestMetricsHandler_Update_Counter(t *testing.T) {
 					metricName = "test_counter_3"
 				}
 
-				val, ok, _ := store.GetCounter(metricName)
+				val, ok, _ := store.GetCounter(context.Background(),metricName)
 				if !ok {
 					t.Error("expected metric to exist")
 				}
@@ -158,7 +159,7 @@ func TestMetricsHandler_Update_Counter_Accumulates(t *testing.T) {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	val, ok, _ := store.GetCounter("test_counter_acc")
+	val, ok, _ := store.GetCounter(context.Background(),"test_counter_acc")
 	if !ok {
 		t.Error("expected metric to exist")
 	}
@@ -188,7 +189,7 @@ func TestMetricsHandler_Update_Gauge_Overwrites(t *testing.T) {
 		t.Errorf("expected status OK, got %d", w.Code)
 	}
 
-	val, ok, _ := store.GetGauge("test_gauge_overwrite")
+	val, ok, _ := store.GetGauge(context.Background(),"test_gauge_overwrite")
 	if !ok {
 		t.Error("expected metric to exist")
 	}
@@ -282,8 +283,8 @@ func TestMetricsHandler_Update_Errors(t *testing.T) {
 func TestMetricsHandler_Get(t *testing.T) {
 	router, store := setupRouter()
 
-	store.UpdateGauge("test_gauge", 123.45)
-	store.UpdateCounter("test_counter", 42)
+	store.UpdateGauge(context.Background(),"test_gauge", 123.45)
+	store.UpdateCounter(context.Background(),"test_counter", 42)
 
 	tests := []struct {
 		name           string
@@ -361,8 +362,8 @@ func TestMetricsHandler_Get_NotFound(t *testing.T) {
 func TestMetricsHandler_Index(t *testing.T) {
 	router, store := setupRouter()
 
-	store.UpdateGauge("Alloc", 1024.5)
-	store.UpdateCounter("PollCount", 42)
+	store.UpdateGauge(context.Background(),"Alloc", 1024.5)
+	store.UpdateCounter(context.Background(),"PollCount", 42)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -444,8 +445,8 @@ func TestMetricsHandler_Index_Empty(t *testing.T) {
 func TestMetricsHandler_Index_Partial(t *testing.T) {
 	router, store := setupRouter()
 
-	store.UpdateGauge("Alloc", 1024.5)
-	store.UpdateGauge("Sys", 512.0)
+	store.UpdateGauge(context.Background(),"Alloc", 1024.5)
+	store.UpdateGauge(context.Background(),"Sys", 512.0)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -518,7 +519,7 @@ func TestMetricsHandler_Update_Gauge_ZeroAndLarge(t *testing.T) {
 				metricName = "large_gauge"
 			}
 
-			val, ok, _ := store.GetGauge(metricName)
+			val, ok, _ := store.GetGauge(context.Background(),metricName)
 			if !ok {
 				t.Error("expected metric to exist")
 			}
@@ -532,8 +533,8 @@ func TestMetricsHandler_Update_Gauge_ZeroAndLarge(t *testing.T) {
 func TestMetricsHandler_Metrics_Prometheus(t *testing.T) {
 	router, store := setupRouter()
 
-	store.UpdateGauge("Alloc", 1024.5)
-	store.UpdateCounter("PollCount", 42)
+	store.UpdateGauge(context.Background(),"Alloc", 1024.5)
+	store.UpdateCounter(context.Background(),"PollCount", 42)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
@@ -607,7 +608,7 @@ func TestUpdateJSON_Gauge(t *testing.T) {
 		t.Errorf("unexpected response: %+v", resp)
 	}
 
-	stored, ok, _ := store.GetGauge("test_gauge")
+	stored, ok, _ := store.GetGauge(context.Background(),"test_gauge")
 	if !ok || stored != 123.45 {
 		t.Errorf("expected stored 123.45, got %v, %v", stored, ok)
 	}
@@ -630,7 +631,7 @@ func TestUpdateJSON_Counter(t *testing.T) {
 		t.Errorf("unexpected response: %+v", resp)
 	}
 
-	stored, ok, _ := store.GetCounter("test_counter")
+	stored, ok, _ := store.GetCounter(context.Background(),"test_counter")
 	if !ok || stored != 5 {
 		t.Errorf("expected stored 5, got %v, %v", stored, ok)
 	}
@@ -692,7 +693,7 @@ func TestUpdateJSON_InvalidType(t *testing.T) {
 
 func TestGetJSON_Gauge(t *testing.T) {
 	router, store := setupRouter()
-	store.UpdateGauge("gauge1", 42.5)
+	store.UpdateGauge(context.Background(),"gauge1", 42.5)
 
 	w := getJSON(t, router, models.Metrics{ID: "gauge1", MType: "gauge"})
 
@@ -713,7 +714,7 @@ func TestGetJSON_Gauge(t *testing.T) {
 
 func TestGetJSON_Counter(t *testing.T) {
 	router, store := setupRouter()
-	store.UpdateCounter("counter1", 99)
+	store.UpdateCounter(context.Background(),"counter1", 99)
 
 	w := getJSON(t, router, models.Metrics{ID: "counter1", MType: "counter"})
 
