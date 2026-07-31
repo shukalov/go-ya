@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/shukalov/go-ya/pkg/models"
 )
 
 func TestDBStorage_UpdateGauge(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 	ctx := context.Background()
 
 	if err := s.UpdateGauge(ctx, "test", 1.1); err != nil {
@@ -29,7 +30,7 @@ func TestDBStorage_UpdateGauge(t *testing.T) {
 }
 
 func TestDBStorage_UpdateCounter(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 	ctx := context.Background()
 
 	s.UpdateCounter(ctx, "c", 5)
@@ -48,7 +49,7 @@ func TestDBStorage_UpdateCounter(t *testing.T) {
 }
 
 func TestDBStorage_GetGauge_NotFound(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 	ctx := context.Background()
 
 	val, ok, err := s.GetGauge(ctx, "missing")
@@ -64,7 +65,7 @@ func TestDBStorage_GetGauge_NotFound(t *testing.T) {
 }
 
 func TestDBStorage_GetCounter_NotFound(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 	ctx := context.Background()
 
 	val, ok, err := s.GetCounter(ctx, "missing")
@@ -80,7 +81,7 @@ func TestDBStorage_GetCounter_NotFound(t *testing.T) {
 }
 
 func TestDBStorage_GetAllMetrics(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 	ctx := context.Background()
 
 	s.UpdateGauge(ctx, "g1", 1.1)
@@ -100,10 +101,8 @@ func TestDBStorage_GetAllMetrics(t *testing.T) {
 }
 
 func TestDBStorage_Save_NilDB(t *testing.T) {
-	s := NewDBStorage(nil, 0)
+	s := NewMemStorage()
 
-	// Save with nil db should panic (no real db)
-	// but MemStorage methods should work fine
 	ctx := context.Background()
 	s.UpdateGauge(ctx, "g", 1.0)
 }
@@ -181,5 +180,31 @@ func TestDBStorage_Load_EmptyDB(t *testing.T) {
 	}
 	if len(result.Gauges) != 0 {
 		t.Errorf("expected 0 gauges on empty db, got %d", len(result.Gauges))
+	}
+}
+
+func TestDBStorage_UpdateBatch(t *testing.T) {
+	s := NewMemStorage()
+	ctx := context.Background()
+
+	v1 := 1.5
+	d1 := int64(10)
+	metrics := []models.Metrics{
+		{ID: "g1", MType: "gauge", Value: &v1},
+		{ID: "c1", MType: "counter", Delta: &d1},
+	}
+
+	if err := s.UpdateBatch(ctx, metrics); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	val, ok, _ := s.GetGauge(ctx, "g1")
+	if !ok || val != 1.5 {
+		t.Errorf("expected g1=1.5, got %f, %v", val, ok)
+	}
+
+	cval, ok, _ := s.GetCounter(ctx, "c1")
+	if !ok || cval != 10 {
+		t.Errorf("expected c1=10, got %d, %v", cval, ok)
 	}
 }

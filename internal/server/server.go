@@ -66,52 +66,12 @@ func (s *Server) Migrate() error {
 	return goose.Up(s.db, ".")
 }
 
-func (s *Server) initDBStorage() error {
-	if err := s.initDB(); err != nil {
-		return err
-	}
-	if err := s.Migrate(); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
-	}
-
-	dbs := storage.NewDBStorage(s.db, s.cfg.StoreInterval)
-
-	if s.cfg.Restore {
-		if err := dbs.Load(); err != nil {
-			s.cfg.Logger.Error("failed to restore metrics from database", zap.Error(err))
-		}
-	}
-
-	if s.cfg.StoreInterval > 0 {
-		go dbs.Run()
-	}
-
-	s.store = dbs
-	return nil
-}
-
-func (s *Server) initFileStorage() error {
-	fs := storage.NewFileBackedStorage(s.cfg.FilePath, s.cfg.StoreInterval)
-
-	if s.cfg.Restore {
-		if err := fs.Load(); err != nil {
-			return fmt.Errorf("failed to restore metrics: %w", err)
-		}
-	}
-
-	if s.cfg.StoreInterval > 0 {
-		go fs.Run()
-	}
-
-	s.store = fs
-	return nil
-}
-
 func (s *Server) routes() {
 	h := handlers.NewMetricsHandler(s.store)
 
 	s.engine.POST("/update/:type/:name/:value", h.Update)
 	s.engine.POST("/update", h.UpdateJSON)
+	s.engine.POST("/updates", h.UpdateJSONBatch)
 	s.engine.GET("/value/:type/:name", h.Get)
 	s.engine.POST("/value", h.GetJSON)
 	s.engine.GET("/", h.Index)
@@ -144,21 +104,31 @@ func (s *Server) Run() error {
 
 	switch {
 	case s.cfg.DatabaseDSN != "":
-		if err := s.initDBStorage(); err != nil {
+		if err := s.initDB(); err != nil {
 			return err
 		}
+		if err := s.Migrate(); err != nil {
+			return fmt.Errorf("migration failed: %w", err)
+		}
+		s.store = storage.NewDBStorage(s.db, s.cfg.StoreInterval)
 		s.cfg.Logger.Info("using database storage")
 
 	case s.cfg.FilePath != "":
-		if err := s.initFileStorage(); err != nil {
-			return err
-		}
+		s.store = storage.NewFileStorage(s.cfg.FilePath, s.cfg.StoreInterval)
 		s.cfg.Logger.Info("using file storage")
 
 	default:
 		s.store = storage.NewMemStorage()
 		s.cfg.Logger.Info("using memory storage")
 	}
+
+	if s.cfg.Restore {
+		if err := s.store.Load(); err != nil {
+			s.cfg.Logger.Error("failed to restore metrics", zap.Error(err))
+		}
+	}
+
+	go s.store.Run()
 
 	s.routes()
 	return http.ListenAndServe(s.cfg.Address, s.engine)

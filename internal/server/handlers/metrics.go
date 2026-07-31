@@ -257,6 +257,23 @@ func (h *MetricsHandler) UpdateJSON(c *gin.Context) {
 	c.JSON(http.StatusOK, m)
 }
 
+// UpdateJSONBatch - обработчик для batch обновления метрик через JSON
+func (h *MetricsHandler) UpdateJSONBatch(c *gin.Context) {
+	ctx := c.Request.Context()
+	var metrics []models.Metrics
+	if err := json.NewDecoder(c.Request.Body).Decode(&metrics); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+
+	if err := h.storage.UpdateBatch(ctx, metrics); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("storage error: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, metrics)
+}
+
 // GetJSON - обработчик для получения метрик через JSON
 func (h *MetricsHandler) GetJSON(c *gin.Context) {
 	ctx := c.Request.Context()

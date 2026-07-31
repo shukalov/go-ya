@@ -22,4 +22,13 @@ type Storage interface {
 
 	// GetAllMetrics возвращает все метрики
 	GetAllMetrics(ctx context.Context) (models.RuntimeMetrics, error)
+
+	// UpdateBatch обновляет несколько метрик за одну операцию
+	UpdateBatch(ctx context.Context, metrics []models.Metrics) error
+
+	// Load загружает метрики из хранилища
+	Load() error
+
+	// Run запускает периодическое сохранение метрик
+	Run()
 }

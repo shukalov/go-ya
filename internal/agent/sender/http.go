@@ -66,6 +66,7 @@ func (s *HTTPSender) SendMetric(metricType string, name string, value interface{
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -80,18 +81,58 @@ func (s *HTTPSender) SendMetric(metricType string, name string, value interface{
 	return nil
 }
 
-// SendAllMetrics - отправляет все метрики
+// SendAllMetrics - отправляет все метрики одним batch-запросом
 func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics) error {
+	var batch []models.Metrics
+
 	for name := range models.GaugeDefs() {
-		if err := s.SendMetric("gauge", name, metrics.Gauges[name]); err != nil {
-			return fmt.Errorf("failed to send gauge %s: %w", name, err)
-		}
+		v := metrics.Gauges[name]
+		batch = append(batch, models.Metrics{ID: name, MType: "gauge", Value: &v})
 	}
 
 	for name := range models.CounterDefs() {
-		if err := s.SendMetric("counter", name, metrics.Counters[name]); err != nil {
-			return fmt.Errorf("failed to send counter %s: %w", name, err)
-		}
+		v := metrics.Counters[name]
+		batch = append(batch, models.Metrics{ID: name, MType: "counter", Delta: &v})
+	}
+
+	return s.SendBatch(batch)
+}
+
+// SendBatch - отправляет batch метрик одним запросом
+func (s *HTTPSender) SendBatch(metrics []models.Metrics) error {
+	body, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics: %w", err)
+	}
+
+	var buf bytes.Buffer
+	gz, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip writer: %w", err)
+	}
+	if _, err := gz.Write(body); err != nil {
+		return fmt.Errorf("failed to compress body: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/updates", &buf)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	return nil

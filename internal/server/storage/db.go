@@ -3,46 +3,18 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"time"
 
-	"go.uber.org/zap"
-
-	serverlogger "github.com/shukalov/go-ya/internal/server/logger"
+	"github.com/shukalov/go-ya/pkg/models"
 )
 
-type DBStorage struct {
-	MemStorage
-	db            *sql.DB
-	storeInterval time.Duration
+type dbPersist struct {
+	db *sql.DB
 }
 
-func NewDBStorage(db *sql.DB, storeInterval time.Duration) *DBStorage {
-	return &DBStorage{
-		MemStorage:    *NewMemStorage(),
-		db:            db,
-		storeInterval: storeInterval,
-	}
-}
-
-func (s *DBStorage) UpdateGauge(ctx context.Context, name string, value float64) error {
-	s.MemStorage.UpdateGauge(ctx, name, value)
-	return nil
-}
-
-func (s *DBStorage) UpdateCounter(ctx context.Context, name string, value int64) error {
-	s.MemStorage.UpdateCounter(ctx, name, value)
-	return nil
-}
-
-func (s *DBStorage) Save() error {
+func (p *dbPersist) Save(metrics models.RuntimeMetrics) error {
 	ctx := context.Background()
 
-	metrics, err := s.MemStorage.GetAllMetrics(ctx)
-	if err != nil {
-		return err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -70,21 +42,16 @@ func (s *DBStorage) Save() error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	serverlogger.L.Info("saved metrics to database")
-	return nil
+	return tx.Commit()
 }
 
-func (s *DBStorage) Load() error {
+func (p *dbPersist) Load(metrics *models.RuntimeMetrics) error {
 	ctx := context.Background()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	metrics.Gauges = make(map[string]float64)
+	metrics.Counters = make(map[string]int64)
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, value FROM gauges`)
+	rows, err := p.db.QueryContext(ctx, `SELECT id, value FROM gauges`)
 	if err != nil {
 		return err
 	}
@@ -95,13 +62,13 @@ func (s *DBStorage) Load() error {
 		if err := rows.Scan(&id, &value); err != nil {
 			return err
 		}
-		s.gauges[id] = value
+		metrics.Gauges[id] = value
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	rows, err = s.db.QueryContext(ctx, `SELECT id, delta FROM counters`)
+	rows, err = p.db.QueryContext(ctx, `SELECT id, delta FROM counters`)
 	if err != nil {
 		return err
 	}
@@ -112,27 +79,11 @@ func (s *DBStorage) Load() error {
 		if err := rows.Scan(&id, &delta); err != nil {
 			return err
 		}
-		s.counters[id] = delta
+		metrics.Counters[id] = delta
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	serverlogger.L.Info("loaded metrics from database")
 	return nil
-}
-
-func (s *DBStorage) Run() {
-	if s.storeInterval <= 0 {
-		return
-	}
-
-	ticker := time.NewTicker(s.storeInterval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := s.Save(); err != nil {
-			serverlogger.L.Error("periodic save to database failed", zap.Error(err))
-		}
-	}
 }

@@ -1,42 +1,17 @@
 package storage
 
 import (
-	"context"
 	"encoding/json"
 	"os"
-	"sync"
-	"time"
 
-	"go.uber.org/zap"
-
-	serverlogger "github.com/shukalov/go-ya/internal/server/logger"
 	"github.com/shukalov/go-ya/pkg/models"
 )
 
-type FileBackedStorage struct {
-	MemStorage
-	filePath      string
-	storeInterval time.Duration
-	fileMu        sync.Mutex
+type filePersist struct {
+	filePath string
 }
 
-func NewFileBackedStorage(filePath string, storeInterval time.Duration) *FileBackedStorage {
-	return &FileBackedStorage{
-		MemStorage:    *NewMemStorage(),
-		filePath:      filePath,
-		storeInterval: storeInterval,
-	}
-}
-
-func (fs *FileBackedStorage) Save() error {
-	fs.fileMu.Lock()
-	defer fs.fileMu.Unlock()
-
-	metrics, err := fs.MemStorage.GetAllMetrics(context.Background())
-	if err != nil {
-		return err
-	}
-
+func (p *filePersist) Save(metrics models.RuntimeMetrics) error {
 	var data []models.Metrics
 	for name, val := range metrics.Gauges {
 		v := val
@@ -52,16 +27,11 @@ func (fs *FileBackedStorage) Save() error {
 		return err
 	}
 
-	if err := os.WriteFile(fs.filePath, body, 0644); err != nil {
-		return err
-	}
-
-	serverlogger.L.Info("saved metrics to file", zap.String("path", fs.filePath))
-	return nil
+	return os.WriteFile(p.filePath, body, 0644)
 }
 
-func (fs *FileBackedStorage) Load() error {
-	data, err := os.ReadFile(fs.filePath)
+func (p *filePersist) Load(metrics *models.RuntimeMetrics) error {
+	data, err := os.ReadFile(p.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -69,42 +39,26 @@ func (fs *FileBackedStorage) Load() error {
 		return err
 	}
 
-	var metrics []models.Metrics
-	if err := json.Unmarshal(data, &metrics); err != nil {
+	var m []models.Metrics
+	if err := json.Unmarshal(data, &m); err != nil {
 		return err
 	}
 
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
+	metrics.Gauges = make(map[string]float64)
+	metrics.Counters = make(map[string]int64)
 
-	for _, m := range metrics {
-		switch m.MType {
+	for _, item := range m {
+		switch item.MType {
 		case "gauge":
-			if m.Value != nil {
-				fs.gauges[m.ID] = *m.Value
+			if item.Value != nil {
+				metrics.Gauges[item.ID] = *item.Value
 			}
 		case "counter":
-			if m.Delta != nil {
-				fs.counters[m.ID] = *m.Delta
+			if item.Delta != nil {
+				metrics.Counters[item.ID] = *item.Delta
 			}
 		}
 	}
 
-	serverlogger.L.Info("loaded metrics from file", zap.String("path", fs.filePath))
 	return nil
-}
-
-func (fs *FileBackedStorage) Run() {
-	if fs.storeInterval <= 0 {
-		return
-	}
-
-	ticker := time.NewTicker(fs.storeInterval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := fs.Save(); err != nil {
-			serverlogger.L.Error("periodic save failed", zap.Error(err))
-		}
-	}
 }
