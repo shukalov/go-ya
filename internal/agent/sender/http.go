@@ -3,21 +3,22 @@ package sender
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/shukalov/go-ya/internal/agent/sender/httperrors"
+	"github.com/shukalov/go-ya/internal/retry"
 	"github.com/shukalov/go-ya/pkg/models"
 )
 
-// HTTPSender - отправляет метрики по HTTP
 type HTTPSender struct {
 	serverAddress string
 	client        *http.Client
 }
 
-// NewHTTPSender - создает новый HTTP отправитель
 func NewHTTPSender(serverAddress string) *HTTPSender {
 	return &HTTPSender{
 		serverAddress: serverAddress,
@@ -27,7 +28,47 @@ func NewHTTPSender(serverAddress string) *HTTPSender {
 	}
 }
 
-// SendMetric - отправляет одну метрику
+func (s *HTTPSender) sendJSON(path string, data []byte) error {
+	retryCfg := retry.Config{
+		StrategyCfg: retry.DefaultConfig.StrategyCfg,
+		Classify:  httperrors.NewHTTPErrorClassifier().Classify,
+	}
+
+	return retry.Execute(context.Background(), retryCfg, func() error {
+		var buf bytes.Buffer
+		gz, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip writer: %w", err)
+		}
+		if _, err := gz.Write(data); err != nil {
+			return fmt.Errorf("failed to compress body: %w", err)
+		}
+		if err := gz.Close(); err != nil {
+			return fmt.Errorf("failed to close gzip writer: %w", err)
+		}
+
+		req, err := http.NewRequest(http.MethodPost, s.serverAddress+path, &buf)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		return nil
+	})
+}
+
 func (s *HTTPSender) SendMetric(metricType string, name string, value interface{}) error {
 	m := models.Metrics{
 		ID:    name,
@@ -48,40 +89,9 @@ func (s *HTTPSender) SendMetric(metricType string, name string, value interface{
 		return fmt.Errorf("failed to marshal metric: %w", err)
 	}
 
-	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
-	}
-	if _, err := gz.Write(body); err != nil {
-		return fmt.Errorf("failed to compress body: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/update", &buf)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "gzip")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return nil
+	return s.sendJSON("/update", body)
 }
 
-// SendAllMetrics - отправляет все метрики одним batch-запросом
 func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics) error {
 	var batch []models.Metrics
 
@@ -98,42 +108,11 @@ func (s *HTTPSender) SendAllMetrics(metrics models.RuntimeMetrics) error {
 	return s.SendBatch(batch)
 }
 
-// SendBatch - отправляет batch метрик одним запросом
 func (s *HTTPSender) SendBatch(metrics []models.Metrics) error {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
-	}
-	if _, err := gz.Write(body); err != nil {
-		return fmt.Errorf("failed to compress body: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, s.serverAddress+"/updates", &buf)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "gzip")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return nil
+	return s.sendJSON("/updates", body)
 }

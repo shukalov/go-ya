@@ -42,7 +42,7 @@ func NewFileStorage(filePath string, storeInterval time.Duration) *MemStorage {
 func NewDBStorage(db *sql.DB, storeInterval time.Duration) *MemStorage {
 	s := NewMemStorage()
 	s.storeInterval = storeInterval
-	s.persistStorage = &dbPersist{db: db}
+	s.persistStorage = newDBPersist(db)
 	return s
 }
 
