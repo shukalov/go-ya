@@ -15,9 +15,15 @@ import (
 )
 
 type envConfig struct {
-	Address        string `env:"ADDRESS"`
-	ReportInterval int    `env:"REPORT_INTERVAL"`
-	PollInterval   int    `env:"POLL_INTERVAL"`
+	Address        *string `env:"ADDRESS"`
+	ReportInterval *int    `env:"REPORT_INTERVAL"`
+	PollInterval   *int    `env:"POLL_INTERVAL"`
+}
+
+func override[T comparable](flag *T, env *T) {
+	if env != nil {
+		*flag = *env
+	}
 }
 
 func main() {
@@ -33,39 +39,28 @@ func main() {
 		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
-	if envCfg.Address == "" || envCfg.ReportInterval == 0 || envCfg.PollInterval == 0 {
+	if envCfg.Address == nil || envCfg.ReportInterval == nil || envCfg.PollInterval == nil {
 		flag.Parse()
 	}
 
-	serverAddress := envCfg.Address
-	if serverAddress == "" {
-		serverAddress = *addr
-	}
+	override(addr, envCfg.Address)
+	override(reportInterval, envCfg.ReportInterval)
+	override(pollInterval, envCfg.PollInterval)
 
-	reportIntervalSec := envCfg.ReportInterval
-	if reportIntervalSec == 0 {
-		reportIntervalSec = *reportInterval
-	}
-
-	pollIntervalSec := envCfg.PollInterval
-	if pollIntervalSec == 0 {
-		pollIntervalSec = *pollInterval
-	}
-
-	if reportIntervalSec <= 0 || pollIntervalSec <= 0 {
+	if *reportInterval <= 0 || *pollInterval <= 0 {
 		logger.Fatal("intervals must be positive")
 	}
 
-	config := agent.Config{
-		PollInterval:   time.Duration(pollIntervalSec) * time.Second,
-		ReportInterval: time.Duration(reportIntervalSec) * time.Second,
-		ServerAddress:  "http://" + serverAddress,
+	agentConfig := agent.Config{
+		PollInterval:   time.Duration(*pollInterval) * time.Second,
+		ReportInterval: time.Duration(*reportInterval) * time.Second,
+		ServerAddress:  "http://" + *addr,
 		Logger:         logger,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	a := agent.NewAgent(config)
+	a := agent.NewAgent(agentConfig)
 	a.Run(ctx)
 }

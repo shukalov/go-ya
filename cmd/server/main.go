@@ -12,17 +12,16 @@ import (
 )
 
 type envConfig struct {
-	Address         string `env:"ADDRESS"`
-	StoreInterval   int    `env:"STORE_INTERVAL"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH"`
-	Restore         bool   `env:"RESTORE"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
+	Address         *string `env:"ADDRESS"`
+	StoreInterval   *int    `env:"STORE_INTERVAL"`
+	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
+	Restore         *bool   `env:"RESTORE"`
+	DatabaseDSN     *string `env:"DATABASE_DSN"`
 }
 
-func override[T comparable](flag *T, env T) {
-	var zero T
-	if env != zero {
-		*flag = env
+func override[T comparable](flag *T, env *T) {
+	if env != nil {
+		*flag = *env
 	}
 }
 
@@ -41,7 +40,7 @@ func main() {
 		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
-	if envCfg.Address == "" || envCfg.StoreInterval == 0 || envCfg.FileStoragePath == "" || envCfg.DatabaseDSN == "" {
+	if envCfg.Address == nil || envCfg.StoreInterval == nil || envCfg.FileStoragePath == nil || envCfg.DatabaseDSN == nil {
 		flag.Parse()
 	}
 
