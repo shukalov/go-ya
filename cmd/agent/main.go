@@ -18,6 +18,7 @@ type envConfig struct {
 	Address        *string `env:"ADDRESS"`
 	ReportInterval *int    `env:"REPORT_INTERVAL"`
 	PollInterval   *int    `env:"POLL_INTERVAL"`
+	Key            *string `env:"KEY"`
 }
 
 func override[T comparable](flag *T, env *T) {
@@ -33,19 +34,21 @@ func main() {
 	addr := flag.String("a", "localhost:8080", "address endpoint")
 	reportInterval := flag.Int("r", 10, "report interval in seconds")
 	pollInterval := flag.Int("p", 2, "poll interval in seconds")
+	key := flag.String("k", "", "signing key")
 
 	var envCfg envConfig
 	if err := env.Parse(&envCfg); err != nil {
 		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
-	if envCfg.Address == nil || envCfg.ReportInterval == nil || envCfg.PollInterval == nil {
+	if envCfg.Address == nil || envCfg.ReportInterval == nil || envCfg.PollInterval == nil || envCfg.Key == nil {
 		flag.Parse()
 	}
 
 	override(addr, envCfg.Address)
 	override(reportInterval, envCfg.ReportInterval)
 	override(pollInterval, envCfg.PollInterval)
+	override(key, envCfg.Key)
 
 	if *reportInterval <= 0 || *pollInterval <= 0 {
 		logger.Fatal("intervals must be positive")
@@ -56,6 +59,7 @@ func main() {
 		ReportInterval: time.Duration(*reportInterval) * time.Second,
 		ServerAddress:  "http://" + *addr,
 		Logger:         logger,
+		Key:            *key,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

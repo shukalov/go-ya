@@ -16,6 +16,7 @@ type Config struct {
 	ReportInterval time.Duration
 	ServerAddress  string
 	Logger         *zap.Logger
+	Key            string
 }
 
 // Agent - основной компонент агента
@@ -30,7 +31,7 @@ func NewAgent(config Config) *Agent {
 	return &Agent{
 		config:    config,
 		collector: collector.NewMetricsCollector(),
-		sender:    sender.NewHTTPSender(config.ServerAddress),
+		sender:    sender.NewHTTPSender(config.ServerAddress, config.Key),
 	}
 }
 

@@ -11,17 +11,20 @@ import (
 
 	"github.com/shukalov/go-ya/internal/agent/sender/httperrors"
 	"github.com/shukalov/go-ya/internal/retry"
+	"github.com/shukalov/go-ya/pkg/hash"
 	"github.com/shukalov/go-ya/pkg/models"
 )
 
 type HTTPSender struct {
 	serverAddress string
 	client        *http.Client
+	hashKey       string
 }
 
-func NewHTTPSender(serverAddress string) *HTTPSender {
+func NewHTTPSender(serverAddress, hashKey string) *HTTPSender {
 	return &HTTPSender{
 		serverAddress: serverAddress,
+		hashKey:       hashKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -54,6 +57,9 @@ func (s *HTTPSender) sendJSON(path string, data []byte) error {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+		if s.hashKey != "" {
+			req.Header.Set("HashSHA256", hash.Sign(data, s.hashKey))
+		}
 
 		resp, err := s.client.Do(req)
 		if err != nil {

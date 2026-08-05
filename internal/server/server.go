@@ -26,6 +26,7 @@ type Config struct {
 	FilePath      string
 	StoreInterval time.Duration
 	Restore       bool
+	Key           string
 }
 
 type Server struct {
@@ -45,6 +46,7 @@ func NewServer(cfg Config) *Server {
 	s.engine.Use(middleware.Logging(cfg.Logger))
 	s.engine.Use(gzip.DefaultDecompressHandle)
 	s.engine.Use(middleware.Compress())
+	s.engine.Use(middleware.Hash(cfg.Key))
 
 	return s
 }
@@ -69,13 +71,13 @@ func (s *Server) Migrate() error {
 func (s *Server) routes() {
 	h := handlers.NewMetricsHandler(s.store)
 
-	s.engine.POST("/update/:type/:name/:value", h.Update)
-	s.engine.POST("/update", h.UpdateJSON)
-	s.engine.POST("/updates", h.UpdateJSONBatch)
-	s.engine.GET("/value/:type/:name", h.Get)
-	s.engine.POST("/value", h.GetJSON)
+	s.engine.POST("/update/:type/:name/:value/", h.Update)
+	s.engine.POST("/update/", h.UpdateJSON)
+	s.engine.POST("/updates/", h.UpdateJSONBatch)
+	s.engine.GET("/value/:type/:name/", h.Get)
+	s.engine.POST("/value/", h.GetJSON)
 	s.engine.GET("/", h.Index)
-	s.engine.GET("/metrics", h.Metrics)
+	s.engine.GET("/metrics/", h.Metrics)
 
 	s.engine.GET("/ping", func(c *gin.Context) {
 		if s.db == nil {

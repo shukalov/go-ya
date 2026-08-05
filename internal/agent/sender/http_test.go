@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewHTTPSender(t *testing.T) {
-	sender := NewHTTPSender("http://localhost:8080")
+	sender := NewHTTPSender("http://localhost:8080", "")
 	if sender == nil {
 		t.Error("expected sender to be created")
 	}
@@ -72,7 +72,7 @@ func TestHTTPSender_SendMetric_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 	err := sender.SendMetric("gauge", "test", 123.45)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -103,7 +103,7 @@ func TestHTTPSender_SendMetric_Counter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 	err := sender.SendMetric("counter", "PollCount", int64(5))
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -116,7 +116,7 @@ func TestHTTPSender_SendMetric_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 	err := sender.SendMetric("gauge", "test", 123.45)
 	if err == nil {
 		t.Error("expected error, got nil")
@@ -124,7 +124,7 @@ func TestHTTPSender_SendMetric_Error(t *testing.T) {
 }
 
 func TestHTTPSender_SendMetric_InvalidValue(t *testing.T) {
-	sender := NewHTTPSender("http://localhost:8080")
+	sender := NewHTTPSender("http://localhost:8080", "")
 
 	err := sender.SendMetric("gauge", "test", "invalid")
 	if err == nil {
@@ -138,7 +138,7 @@ func TestHTTPSender_SendAllMetrics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 
 	metrics := models.RuntimeMetrics{
 		Gauges:   map[string]float64{"Alloc": 1024.5, "HeapAlloc": 512.3, "RandomValue": 42.0},
@@ -157,7 +157,7 @@ func TestHTTPSender_SendAllMetrics_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 
 	metrics := models.RuntimeMetrics{
 		Gauges: map[string]float64{"Alloc": 1024.5},
@@ -176,7 +176,7 @@ func TestHTTPSender_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewHTTPSender(server.URL)
+	sender := NewHTTPSender(server.URL, "")
 	sender.client.Timeout = 1 * time.Second
 
 	err := sender.SendMetric("gauge", "test", 123.45)

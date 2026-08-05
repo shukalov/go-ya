@@ -17,6 +17,7 @@ type envConfig struct {
 	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
 	Restore         *bool   `env:"RESTORE"`
 	DatabaseDSN     *string `env:"DATABASE_DSN"`
+	Key             *string `env:"KEY"`
 }
 
 func override[T comparable](flag *T, env *T) {
@@ -34,13 +35,14 @@ func main() {
 	fileStoragePath := flag.String("f", "/tmp/metrics-snapshot.json", "file storage path")
 	restore := flag.Bool("r", false, "restore metrics from file on startup")
 	databaseDSN := flag.String("d", "", "database DSN (PostgreSQL)")
+	key := flag.String("k", "", "signing key")
 
 	var envCfg envConfig
 	if err := env.Parse(&envCfg); err != nil {
 		logger.Fatal("failed to parse env", zap.Error(err))
 	}
 
-	if envCfg.Address == nil || envCfg.StoreInterval == nil || envCfg.FileStoragePath == nil || envCfg.DatabaseDSN == nil {
+	if envCfg.Address == nil || envCfg.StoreInterval == nil || envCfg.FileStoragePath == nil || envCfg.DatabaseDSN == nil || envCfg.Key == nil {
 		flag.Parse()
 	}
 
@@ -49,6 +51,7 @@ func main() {
 	override(fileStoragePath, envCfg.FileStoragePath)
 	override(restore, envCfg.Restore)
 	override(databaseDSN, envCfg.DatabaseDSN)
+	override(key, envCfg.Key)
 
 	srv := server.NewServer(server.Config{
 		Address:       *addr,
@@ -57,6 +60,7 @@ func main() {
 		FilePath:      *fileStoragePath,
 		StoreInterval: time.Duration(*storeInterval) * time.Second,
 		Restore:       *restore,
+		Key:           *key,
 	})
 
 	if err := srv.Run(); err != nil {
