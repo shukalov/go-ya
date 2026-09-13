@@ -1,0 +1,14 @@
+-- +goose Up
+CREATE TABLE IF NOT EXISTS gauges (
+    id    TEXT PRIMARY KEY,
+    value DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS counters (
+    id    TEXT PRIMARY KEY,
+    delta BIGINT NOT NULL
+);
+
+-- +goose Down
+DROP TABLE IF EXISTS counters;
+DROP TABLE IF EXISTS gauges;

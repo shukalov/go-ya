@@ -1,0 +1,202 @@
+package storage
+
+import (
+	"context"
+	"testing"
+)
+
+func TestNewMemStorage(t *testing.T) {
+	storage := NewMemStorage()
+	if storage == nil {
+		t.Error("expected storage to be created")
+	}
+	if storage.gauges == nil {
+		t.Error("expected gauges map to be initialized")
+	}
+	if storage.counters == nil {
+		t.Error("expected counters map to be initialized")
+	}
+}
+
+func TestMemStorage_UpdateGauge(t *testing.T) {
+	storage := NewMemStorage()
+
+	tests := []struct {
+		name  string
+		key   string
+		value float64
+	}{
+		{
+			name:  "update gauge",
+			key:   "test_gauge",
+			value: 123.45,
+		},
+		{
+			name:  "update gauge with zero",
+			key:   "test_gauge_zero",
+			value: 0.0,
+		},
+		{
+			name:  "update gauge with negative",
+			key:   "test_gauge_negative",
+			value: -123.45,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := storage.UpdateGauge(context.Background(),tt.key, tt.value)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			val, ok, err := storage.GetGauge(context.Background(),tt.key)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if !ok {
+				t.Error("expected metric to exist")
+			}
+			if val != tt.value {
+				t.Errorf("expected %f, got %f", tt.value, val)
+			}
+		})
+	}
+}
+
+func TestMemStorage_UpdateCounter(t *testing.T) {
+	storage := NewMemStorage()
+
+	tests := []struct {
+		name     string
+		key      string
+		values   []int64
+		expected int64
+	}{
+		{
+			name:     "single increment",
+			key:      "test_counter_1",
+			values:   []int64{5},
+			expected: 5,
+		},
+		{
+			name:     "multiple increments",
+			key:      "test_counter_2",
+			values:   []int64{1, 2, 3, 4, 5},
+			expected: 15,
+		},
+		{
+			name:     "with negative values",
+			key:      "test_counter_3",
+			values:   []int64{10, -5, 3},
+			expected: 8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, v := range tt.values {
+				err := storage.UpdateCounter(context.Background(),tt.key, v)
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+
+			val, ok, err := storage.GetCounter(context.Background(),tt.key)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if !ok {
+				t.Error("expected metric to exist")
+			}
+			if val != tt.expected {
+				t.Errorf("expected %d, got %d", tt.expected, val)
+			}
+		})
+	}
+}
+
+func TestMemStorage_GetGauge_NotFound(t *testing.T) {
+	storage := NewMemStorage()
+	val, ok, err := storage.GetGauge(context.Background(),"non_existent")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Error("expected metric not to exist")
+	}
+	if val != 0 {
+		t.Errorf("expected 0, got %f", val)
+	}
+}
+
+func TestMemStorage_GetCounter_NotFound(t *testing.T) {
+	storage := NewMemStorage()
+	val, ok, err := storage.GetCounter(context.Background(),"non_existent")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Error("expected metric not to exist")
+	}
+	if val != 0 {
+		t.Errorf("expected 0, got %d", val)
+	}
+}
+
+func TestMemStorage_GetAllMetrics(t *testing.T) {
+	storage := NewMemStorage()
+
+	// Добавляем тестовые метрики
+	storage.UpdateGauge(context.Background(),"gauge1", 1.1)
+	storage.UpdateGauge(context.Background(),"gauge2", 2.2)
+	storage.UpdateCounter(context.Background(),"counter1", 10)
+	storage.UpdateCounter(context.Background(),"counter2", 20)
+
+	result, err := storage.GetAllMetrics(context.Background())
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if len(result.Gauges) != 2 {
+		t.Errorf("expected 2 gauges, got %d", len(result.Gauges))
+	}
+	if len(result.Counters) != 2 {
+		t.Errorf("expected 2 counters, got %d", len(result.Counters))
+	}
+
+	if result.Gauges["gauge1"] != 1.1 {
+		t.Errorf("expected 1.1, got %f", result.Gauges["gauge1"])
+	}
+	if result.Counters["counter1"] != 10 {
+		t.Errorf("expected 10, got %d", result.Counters["counter1"])
+	}
+}
+
+func TestMemStorage_Concurrency(t *testing.T) {
+	storage := NewMemStorage()
+	done := make(chan bool)
+
+	// Запускаем несколько горутин для теста конкурентности
+	for i := 0; i < 100; i++ {
+		go func(id int) {
+			storage.UpdateGauge(context.Background(),"gauge", float64(id))
+			storage.UpdateCounter(context.Background(),"counter", int64(id))
+			done <- true
+		}(i)
+	}
+
+	// Ждем завершения всех горутин
+	for i := 0; i < 100; i++ {
+		<-done
+	}
+
+	val, ok, _ := storage.GetGauge(context.Background(),"gauge")
+	if !ok {
+		t.Error("expected gauge to exist")
+	}
+	// Значение должно быть последним записанным
+	if val < 0 || val > 100 {
+		t.Errorf("unexpected gauge value: %f", val)
+	}
+}
