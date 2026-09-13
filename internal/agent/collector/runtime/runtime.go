@@ -1,31 +1,36 @@
-package collector
+package runtime
 
 import (
+	"context"
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/shukalov/go-ya/pkg/models"
 )
 
-// MetricsCollector - сборщик метрик из runtime
-type MetricsCollector struct {
-	mu      sync.RWMutex
-	metrics models.RuntimeMetrics
+type RuntimeCollector struct {
+	mu           sync.RWMutex
+	metrics      models.RuntimeMetrics
+	pollInterval time.Duration
+	logger       *zap.Logger
 }
 
-// NewMetricsCollector - создает новый сборщик
-func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{
+func New(pollInterval time.Duration, logger *zap.Logger) *RuntimeCollector {
+	return &RuntimeCollector{
 		metrics: models.RuntimeMetrics{
 			Gauges:   make(map[string]float64, len(models.GaugeDefs())),
 			Counters: make(map[string]int64, len(models.CounterDefs())),
 		},
+		pollInterval: pollInterval,
+		logger:       logger,
 	}
 }
 
-// Collect - собирает метрики из runtime
-func (c *MetricsCollector) Collect() {
+func (c *RuntimeCollector) Collect() {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
@@ -67,8 +72,7 @@ func (c *MetricsCollector) Collect() {
 	c.metrics.Counters["PollCount"]++
 }
 
-// GetMetrics - возвращает копию собранных метрик
-func (c *MetricsCollector) GetMetrics() models.RuntimeMetrics {
+func (c *RuntimeCollector) GetMetrics() models.RuntimeMetrics {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	gauges := make(map[string]float64, len(c.metrics.Gauges))
@@ -80,4 +84,23 @@ func (c *MetricsCollector) GetMetrics() models.RuntimeMetrics {
 		counters[k] = v
 	}
 	return models.RuntimeMetrics{Gauges: gauges, Counters: counters}
+}
+
+func (c *RuntimeCollector) Run(ctx context.Context) {
+	c.Collect()
+
+	ticker := time.NewTicker(c.pollInterval)
+	defer ticker.Stop()
+
+	c.logger.Info("runtime collector started", zap.Duration("pollInterval", c.pollInterval))
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("runtime collector stopped")
+			return
+		case <-ticker.C:
+			c.Collect()
+		}
+	}
 }

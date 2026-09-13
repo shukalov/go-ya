@@ -55,6 +55,9 @@ func init() {
 		"Sys":          {Description: "Bytes of memory obtained from OS"},
 		"TotalAlloc":   {Description: "Cumulative bytes of allocated heap objects"},
 		"RandomValue":  {Description: "Random value for demonstration"},
+		"TotalMemory":        {Description: "Total system memory in bytes"},
+		"FreeMemory":         {Description: "Free system memory in bytes"},
+		"CPUutilization1":    {Description: "CPU utilization percentage (template)"},
 	}
 
 	counterDefs = map[string]MetricDef{
